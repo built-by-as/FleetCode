@@ -1,6 +1,6 @@
-const { ipcRenderer } = require("electron");
-const { Terminal } = require("xterm");
-const { FitAddon } = require("xterm-addon-fit");
+import { ipcRenderer } from "electron";
+import { Terminal } from "xterm";
+import { FitAddon } from "xterm-addon-fit";
 
 // Create terminal instance
 const term = new Terminal({
@@ -18,8 +18,11 @@ const fitAddon = new FitAddon();
 term.loadAddon(fitAddon);
 
 // Open terminal in the DOM
-term.open(document.getElementById("terminal"));
-fitAddon.fit();
+const terminalElement = document.getElementById("terminal");
+if (terminalElement) {
+  term.open(terminalElement);
+  fitAddon.fit();
+}
 
 // Handle terminal input
 term.onData((data) => {
@@ -27,7 +30,7 @@ term.onData((data) => {
 });
 
 // Handle terminal output from main process
-ipcRenderer.on("terminal-output", (event, data) => {
+ipcRenderer.on("terminal-output", (_event, data: string) => {
   term.write(data);
 });
 

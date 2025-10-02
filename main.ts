@@ -1,8 +1,8 @@
-const { app, BrowserWindow, ipcMain } = require("electron/main");
-const pty = require("node-pty");
-const os = require("os");
+import { app, BrowserWindow, ipcMain } from "electron";
+import * as pty from "node-pty";
+import * as os from "os";
 
-let ptyProcess;
+let ptyProcess: pty.IPty;
 
 const createWindow = () => {
   const win = new BrowserWindow({
@@ -32,12 +32,12 @@ const createWindow = () => {
   });
 
   // Receive input from the renderer
-  ipcMain.on("terminal-input", (event, data) => {
+  ipcMain.on("terminal-input", (_event, data: string) => {
     ptyProcess.write(data);
   });
 
   // Handle terminal resize
-  ipcMain.on("terminal-resize", (event, cols, rows) => {
+  ipcMain.on("terminal-resize", (_event, cols: number, rows: number) => {
     ptyProcess.resize(cols, rows);
   });
 };

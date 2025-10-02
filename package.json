@@ -2,17 +2,22 @@
   "name": "fleetcode",
   "version": "1.0.0",
   "description": "Run multiple CLI coding agents at once",
-  "main": "main.js",
+  "main": "dist/main.js",
   "scripts": {
-    "start": "electron .",
+    "build": "tsc",
+    "start": "npm run build && electron .",
+    "dev": "tsc && electron .",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "author": "built-by-as",
   "license": "ISC",
   "devDependencies": {
     "@electron/rebuild": "^4.0.1",
+    "@types/node": "^24.6.2",
     "electron": "^38.2.0",
-    "electron-rebuild": "^3.2.9"
+    "electron-rebuild": "^3.2.9",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.9.3"
   },
   "dependencies": {
     "node-pty": "^1.0.0",
