@@ -1,0 +1,22 @@
+{
+  "name": "fleetcode",
+  "version": "1.0.0",
+  "description": "Run multiple CLI coding agents at once",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "built-by-as",
+  "license": "ISC",
+  "devDependencies": {
+    "@electron/rebuild": "^4.0.1",
+    "electron": "^38.2.0",
+    "electron-rebuild": "^3.2.9"
+  },
+  "dependencies": {
+    "node-pty": "^1.0.0",
+    "xterm": "^5.3.0",
+    "xterm-addon-fit": "^0.8.0"
+  }
+}
