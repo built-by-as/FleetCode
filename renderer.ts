@@ -198,8 +198,3 @@ ipcRenderer.on("terminal-created", (_event, terminalId: string) => {
 document.getElementById("new-terminal")?.addEventListener("click", () => {
   ipcRenderer.send("create-terminal");
 });
-
-// Create first terminal on load
-window.addEventListener("DOMContentLoaded", () => {
-  ipcRenderer.send("create-terminal");
-});
