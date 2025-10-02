@@ -1,3 +1,88 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+@layer components {
+  /* Sidebar Styles */
+  .sidebar {
+    @apply w-64 bg-gray-800 border-r border-gray-700 flex flex-col;
+  }
+
+  .sidebar-header {
+    @apply p-4 border-b border-gray-700;
+  }
+
+  .sidebar-title {
+    @apply text-white font-semibold text-lg;
+  }
+
+  .sidebar-content {
+    @apply flex-1 overflow-y-auto;
+  }
+
+  .sidebar-section {
+    @apply p-2;
+  }
+
+  .sidebar-section-title {
+    @apply text-xs text-gray-400 px-2 py-1 mb-1;
+  }
+
+  .sidebar-footer {
+    @apply p-3 border-t border-gray-700;
+  }
+
+  /* Session List Item */
+  .session-list-item {
+    @apply px-3 py-2 rounded cursor-pointer hover:bg-gray-700 text-gray-300 text-sm flex items-center justify-between;
+  }
+
+  .session-list-item.active {
+    @apply bg-gray-700;
+  }
+
+  .session-close-btn {
+    @apply text-gray-500 hover:text-red-500 ml-2;
+    opacity: 0;
+    transition: opacity 0.2s;
+  }
+
+  .session-list-item:hover .session-close-btn {
+    opacity: 1;
+  }
+
+  /* Tabs */
+  .tabs-container {
+    @apply flex bg-gray-900 border-b border-gray-700 overflow-x-auto;
+  }
+
+  .tab {
+    @apply px-4 py-2 border-r border-gray-700 cursor-pointer hover:bg-gray-800 flex items-center space-x-2 min-w-max;
+  }
+
+  .tab.active {
+    @apply bg-gray-800 border-b-2 border-blue-500;
+  }
+
+  .tab-name {
+    @apply text-sm text-gray-300;
+  }
+
+  .tab-close-btn {
+    @apply text-gray-500 hover:text-red-500;
+  }
+
+  /* Button */
+  .btn-primary {
+    @apply w-full bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded text-sm font-medium transition;
+  }
+
+  /* Session Container */
+  .session-wrapper {
+    @apply absolute inset-0 hidden;
+  }
+
+  .session-wrapper.active {
+    @apply block;
+  }
+}

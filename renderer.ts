@@ -2,7 +2,7 @@ import { ipcRenderer } from "electron";
 import { Terminal } from "xterm";
 import { FitAddon } from "xterm-addon-fit";
 
-interface TerminalSession {
+interface Session {
   id: string;
   terminal: Terminal;
   fitAddon: FitAddon;
@@ -10,10 +10,10 @@ interface TerminalSession {
   name: string;
 }
 
-const sessions = new Map<string, TerminalSession>();
-let activeTerminalId: string | null = null;
+const sessions = new Map<string, Session>();
+let activeSessionId: string | null = null;
 
-function createTerminalSession(terminalId: string, name: string) {
+function createSession(sessionId: string, name: string) {
   const term = new Terminal({
     cursorBlink: true,
     fontSize: 14,
@@ -27,46 +27,46 @@ function createTerminalSession(terminalId: string, name: string) {
   const fitAddon = new FitAddon();
   term.loadAddon(fitAddon);
 
-  const terminalElement = document.createElement("div");
-  terminalElement.className = "absolute inset-0 hidden";
-  terminalElement.id = `term-${terminalId}`;
+  const sessionElement = document.createElement("div");
+  sessionElement.className = "session-wrapper";
+  sessionElement.id = `session-${sessionId}`;
 
-  const container = document.getElementById("terminal-container");
+  const container = document.getElementById("session-container");
   if (container) {
-    container.appendChild(terminalElement);
+    container.appendChild(sessionElement);
   }
 
-  term.open(terminalElement);
+  term.open(sessionElement);
   fitAddon.fit();
 
   term.onData((data) => {
-    ipcRenderer.send("terminal-input", terminalId, data);
+    ipcRenderer.send("session-input", sessionId, data);
   });
 
-  const session: TerminalSession = {
-    id: terminalId,
+  const session: Session = {
+    id: sessionId,
     terminal: term,
     fitAddon,
-    element: terminalElement,
+    element: sessionElement,
     name,
   };
 
-  sessions.set(terminalId, session);
+  sessions.set(sessionId, session);
 
   // Add to sidebar
-  addToSidebar(terminalId, name);
+  addToSidebar(sessionId, name);
 
   // Add tab
-  addTab(terminalId, name);
+  addTab(sessionId, name);
 
-  // Switch to this terminal
-  switchToTerminal(terminalId);
+  // Switch to this session
+  switchToSession(sessionId);
 
   // Handle resize
   const resizeHandler = () => {
-    if (activeTerminalId === terminalId) {
+    if (activeSessionId === sessionId) {
       fitAddon.fit();
-      ipcRenderer.send("terminal-resize", terminalId, term.cols, term.rows);
+      ipcRenderer.send("session-resize", sessionId, term.cols, term.rows);
     }
   };
   window.addEventListener("resize", resizeHandler);
@@ -74,127 +74,127 @@ function createTerminalSession(terminalId: string, name: string) {
   return session;
 }
 
-function addToSidebar(terminalId: string, name: string) {
-  const list = document.getElementById("terminal-list");
+function addToSidebar(sessionId: string, name: string) {
+  const list = document.getElementById("session-list");
   if (!list) return;
 
   const item = document.createElement("div");
-  item.id = `sidebar-${terminalId}`;
-  item.className = "px-3 py-2 rounded cursor-pointer hover:bg-gray-700 text-gray-300 text-sm flex items-center justify-between group";
+  item.id = `sidebar-${sessionId}`;
+  item.className = "session-list-item";
   item.innerHTML = `
     <span class="truncate">${name}</span>
-    <button class="close-btn opacity-0 group-hover:opacity-100 text-gray-500 hover:text-red-500 ml-2" data-id="${terminalId}">×</button>
+    <button class="session-close-btn" data-id="${sessionId}">×</button>
   `;
 
   item.addEventListener("click", (e) => {
-    if (!(e.target as HTMLElement).classList.contains("close-btn")) {
-      switchToTerminal(terminalId);
+    if (!(e.target as HTMLElement).classList.contains("session-close-btn")) {
+      switchToSession(sessionId);
     }
   });
 
-  const closeBtn = item.querySelector(".close-btn");
+  const closeBtn = item.querySelector(".session-close-btn");
   closeBtn?.addEventListener("click", (e) => {
     e.stopPropagation();
-    closeTerminal(terminalId);
+    closeSession(sessionId);
   });
 
   list.appendChild(item);
 }
 
-function addTab(terminalId: string, name: string) {
+function addTab(sessionId: string, name: string) {
   const tabsContainer = document.getElementById("tabs");
   if (!tabsContainer) return;
 
   const tab = document.createElement("div");
-  tab.id = `tab-${terminalId}`;
-  tab.className = "px-4 py-2 border-r border-gray-700 cursor-pointer hover:bg-gray-800 flex items-center space-x-2 min-w-max";
+  tab.id = `tab-${sessionId}`;
+  tab.className = "tab";
   tab.innerHTML = `
-    <span class="text-sm text-gray-300">${name}</span>
-    <button class="close-tab-btn text-gray-500 hover:text-red-500" data-id="${terminalId}">×</button>
+    <span class="tab-name">${name}</span>
+    <button class="tab-close-btn" data-id="${sessionId}">×</button>
   `;
 
   tab.addEventListener("click", (e) => {
-    if (!(e.target as HTMLElement).classList.contains("close-tab-btn")) {
-      switchToTerminal(terminalId);
+    if (!(e.target as HTMLElement).classList.contains("tab-close-btn")) {
+      switchToSession(sessionId);
     }
   });
 
-  const closeBtn = tab.querySelector(".close-tab-btn");
+  const closeBtn = tab.querySelector(".tab-close-btn");
   closeBtn?.addEventListener("click", (e) => {
     e.stopPropagation();
-    closeTerminal(terminalId);
+    closeSession(sessionId);
   });
 
   tabsContainer.appendChild(tab);
 }
 
-function switchToTerminal(terminalId: string) {
-  // Hide all terminals
+function switchToSession(sessionId: string) {
+  // Hide all sessions
   sessions.forEach((session, id) => {
-    session.element.classList.add("hidden");
-    document.getElementById(`tab-${id}`)?.classList.remove("bg-gray-800", "border-b-2", "border-blue-500");
-    document.getElementById(`sidebar-${id}`)?.classList.remove("bg-gray-700");
+    session.element.classList.remove("active");
+    document.getElementById(`tab-${id}`)?.classList.remove("active");
+    document.getElementById(`sidebar-${id}`)?.classList.remove("active");
   });
 
-  // Show active terminal
-  const session = sessions.get(terminalId);
+  // Show active session
+  const session = sessions.get(sessionId);
   if (session) {
-    session.element.classList.remove("hidden");
-    document.getElementById(`tab-${terminalId}`)?.classList.add("bg-gray-800", "border-b-2", "border-blue-500");
-    document.getElementById(`sidebar-${terminalId}`)?.classList.add("bg-gray-700");
-    activeTerminalId = terminalId;
+    session.element.classList.add("active");
+    document.getElementById(`tab-${sessionId}`)?.classList.add("active");
+    document.getElementById(`sidebar-${sessionId}`)?.classList.add("active");
+    activeSessionId = sessionId;
 
     // Focus and resize
     session.terminal.focus();
     setTimeout(() => {
       session.fitAddon.fit();
-      ipcRenderer.send("terminal-resize", terminalId, session.terminal.cols, session.terminal.rows);
+      ipcRenderer.send("session-resize", sessionId, session.terminal.cols, session.terminal.rows);
     }, 0);
   }
 }
 
-function closeTerminal(terminalId: string) {
-  const session = sessions.get(terminalId);
+function closeSession(sessionId: string) {
+  const session = sessions.get(sessionId);
   if (!session) return;
 
   // Remove from UI
   session.element.remove();
-  document.getElementById(`tab-${terminalId}`)?.remove();
-  document.getElementById(`sidebar-${terminalId}`)?.remove();
+  document.getElementById(`tab-${sessionId}`)?.remove();
+  document.getElementById(`sidebar-${sessionId}`)?.remove();
 
   // Dispose terminal
   session.terminal.dispose();
-  sessions.delete(terminalId);
+  sessions.delete(sessionId);
 
   // Close in main process
-  ipcRenderer.send("close-terminal", terminalId);
+  ipcRenderer.send("close-session", sessionId);
 
-  // Switch to another terminal
-  if (activeTerminalId === terminalId) {
+  // Switch to another session
+  if (activeSessionId === sessionId) {
     const remainingSessions = Array.from(sessions.keys());
     if (remainingSessions.length > 0) {
-      switchToTerminal(remainingSessions[0]);
+      switchToSession(remainingSessions[0]);
     } else {
-      activeTerminalId = null;
+      activeSessionId = null;
     }
   }
 }
 
-// Handle terminal output
-ipcRenderer.on("terminal-output", (_event, terminalId: string, data: string) => {
-  const session = sessions.get(terminalId);
+// Handle session output
+ipcRenderer.on("session-output", (_event, sessionId: string, data: string) => {
+  const session = sessions.get(sessionId);
   if (session) {
     session.terminal.write(data);
   }
 });
 
-// Handle terminal created
-ipcRenderer.on("terminal-created", (_event, terminalId: string) => {
-  const name = `Terminal ${sessions.size + 1}`;
-  createTerminalSession(terminalId, name);
+// Handle session created
+ipcRenderer.on("session-created", (_event, sessionId: string) => {
+  const name = `Session ${sessions.size + 1}`;
+  createSession(sessionId, name);
 });
 
-// New terminal button
-document.getElementById("new-terminal")?.addEventListener("click", () => {
-  ipcRenderer.send("create-terminal");
+// New session button
+document.getElementById("new-session")?.addEventListener("click", () => {
+  ipcRenderer.send("create-session");
 });

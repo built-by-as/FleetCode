@@ -16,21 +16,21 @@
   <body class="h-screen overflow-hidden bg-gray-900">
     <div class="flex h-full">
       <!-- Sidebar -->
-      <div class="w-64 bg-gray-800 border-r border-gray-700 flex flex-col">
-        <div class="p-4 border-b border-gray-700">
-          <h1 class="text-white font-semibold text-lg">FleetCode</h1>
+      <div class="sidebar">
+        <div class="sidebar-header">
+          <h1 class="sidebar-title">FleetCode</h1>
         </div>
 
-        <div class="flex-1 overflow-y-auto">
-          <div class="p-2">
-            <div class="text-xs text-gray-400 px-2 py-1 mb-1">TERMINALS</div>
-            <div id="terminal-list"></div>
+        <div class="sidebar-content">
+          <div class="sidebar-section">
+            <div class="sidebar-section-title">SESSIONS</div>
+            <div id="session-list"></div>
           </div>
         </div>
 
-        <div class="p-3 border-t border-gray-700">
-          <button id="new-terminal" class="w-full bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded text-sm font-medium transition">
-            + New Terminal
+        <div class="sidebar-footer">
+          <button id="new-session" class="btn-primary">
+            + New Session
           </button>
         </div>
       </div>
@@ -38,10 +38,10 @@
       <!-- Main content -->
       <div class="flex-1 flex flex-col bg-black">
         <!-- Tabs -->
-        <div id="tabs" class="flex bg-gray-900 border-b border-gray-700 overflow-x-auto"></div>
+        <div id="tabs" class="tabs-container"></div>
 
-        <!-- Terminal container -->
-        <div id="terminal-container" class="flex-1 relative"></div>
+        <!-- Session container -->
+        <div id="session-container" class="flex-1 relative"></div>
       </div>
     </div>
 

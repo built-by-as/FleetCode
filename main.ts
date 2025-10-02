@@ -3,11 +3,11 @@ import * as pty from "node-pty";
 import * as os from "os";
 
 let mainWindow: BrowserWindow;
-const terminals = new Map<string, pty.IPty>();
+const sessions = new Map<string, pty.IPty>();
 
-// Create new terminal
-ipcMain.on("create-terminal", (event) => {
-  const terminalId = `terminal-${Date.now()}`;
+// Create new session
+ipcMain.on("create-session", (event) => {
+  const sessionId = `session-${Date.now()}`;
   const shell = os.platform() === "darwin" ? "zsh" : "bash";
 
   const ptyProcess = pty.spawn(shell, [], {
@@ -18,37 +18,37 @@ ipcMain.on("create-terminal", (event) => {
     env: process.env,
   });
 
-  terminals.set(terminalId, ptyProcess);
+  sessions.set(sessionId, ptyProcess);
 
   ptyProcess.onData((data) => {
-    mainWindow.webContents.send("terminal-output", terminalId, data);
+    mainWindow.webContents.send("session-output", sessionId, data);
   });
 
-  event.reply("terminal-created", terminalId);
+  event.reply("session-created", sessionId);
 });
 
-// Handle terminal input
-ipcMain.on("terminal-input", (_event, terminalId: string, data: string) => {
-  const terminal = terminals.get(terminalId);
-  if (terminal) {
-    terminal.write(data);
+// Handle session input
+ipcMain.on("session-input", (_event, sessionId: string, data: string) => {
+  const session = sessions.get(sessionId);
+  if (session) {
+    session.write(data);
   }
 });
 
-// Handle terminal resize
-ipcMain.on("terminal-resize", (_event, terminalId: string, cols: number, rows: number) => {
-  const terminal = terminals.get(terminalId);
-  if (terminal) {
-    terminal.resize(cols, rows);
+// Handle session resize
+ipcMain.on("session-resize", (_event, sessionId: string, cols: number, rows: number) => {
+  const session = sessions.get(sessionId);
+  if (session) {
+    session.resize(cols, rows);
   }
 });
 
-// Handle terminal close
-ipcMain.on("close-terminal", (_event, terminalId: string) => {
-  const terminal = terminals.get(terminalId);
-  if (terminal) {
-    terminal.kill();
-    terminals.delete(terminalId);
+// Handle session close
+ipcMain.on("close-session", (_event, sessionId: string) => {
+  const session = sessions.get(sessionId);
+  if (session) {
+    session.kill();
+    sessions.delete(sessionId);
   }
 });
 
