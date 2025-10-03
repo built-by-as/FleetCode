@@ -27,6 +27,7 @@ interface Session {
   config: SessionConfig;
   worktreePath: string;
   hasActivePty: boolean;
+  hasUnreadActivity: boolean;
 }
 
 interface McpServer {
@@ -73,6 +74,15 @@ function createTerminalUI(sessionId: string) {
     ipcRenderer.send("session-input", sessionId, data);
   });
 
+  // Listen for bell character to mark unread activity
+  term.onBell(() => {
+    console.log(`Bell received for session ${sessionId}, activeSessionId: ${activeSessionId}`);
+    if (activeSessionId !== sessionId) {
+      console.log(`Marking session ${sessionId} as unread`);
+      markSessionAsUnread(sessionId);
+    }
+  });
+
   // Handle resize
   const resizeHandler = () => {
     if (activeSessionId === sessionId) {
@@ -95,6 +105,7 @@ function addSession(persistedSession: PersistedSession, hasActivePty: boolean) {
     config: persistedSession.config,
     worktreePath: persistedSession.worktreePath,
     hasActivePty,
+    hasUnreadActivity: false,
   };
 
   sessions.set(persistedSession.id, session);
@@ -299,6 +310,32 @@ function addTab(sessionId: string, name: string) {
   tabsContainer.appendChild(tab);
 }
 
+function markSessionAsUnread(sessionId: string) {
+  const session = sessions.get(sessionId);
+  if (!session) return;
+
+  session.hasUnreadActivity = true;
+
+  // Add unread indicator to tab
+  const tab = document.getElementById(`tab-${sessionId}`);
+  if (tab && !tab.classList.contains("unread")) {
+    tab.classList.add("unread");
+  }
+}
+
+function clearUnreadStatus(sessionId: string) {
+  const session = sessions.get(sessionId);
+  if (!session) return;
+
+  session.hasUnreadActivity = false;
+
+  // Remove unread indicator from tab
+  const tab = document.getElementById(`tab-${sessionId}`);
+  if (tab) {
+    tab.classList.remove("unread");
+  }
+}
+
 function switchToSession(sessionId: string) {
   // Hide all sessions
   sessions.forEach((session, id) => {
@@ -316,6 +353,9 @@ function switchToSession(sessionId: string) {
     document.getElementById(`tab-${sessionId}`)?.classList.add("active");
     document.getElementById(`sidebar-${sessionId}`)?.classList.add("active");
     activeSessionId = sessionId;
+
+    // Clear unread status when switching to this session
+    clearUnreadStatus(sessionId);
 
     // Focus and resize
     session.terminal.focus();
@@ -407,6 +447,11 @@ ipcRenderer.on("session-output", (_event, sessionId: string, data: string) => {
   const session = sessions.get(sessionId);
   if (session && session.terminal) {
     session.terminal.write(data);
+
+    // Mark as unread if this is not the active session and there's output
+    if (activeSessionId !== sessionId && session.hasActivePty) {
+      markSessionAsUnread(sessionId);
+    }
   }
 });
 

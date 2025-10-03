@@ -105,6 +105,17 @@
     @apply bg-gray-800 border-b-2 border-blue-500;
   }
 
+  .tab.unread .tab-name::after {
+    content: '';
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    background-color: #3b82f6;
+    border-radius: 50%;
+    margin-left: 6px;
+    vertical-align: middle;
+  }
+
   .tab-name {
     @apply text-sm text-gray-300;
   }
