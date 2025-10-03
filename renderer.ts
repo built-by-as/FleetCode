@@ -17,6 +17,7 @@ interface PersistedSession {
   config: SessionConfig;
   worktreePath: string;
   createdAt: number;
+  sessionUuid: string;
 }
 
 interface Session {

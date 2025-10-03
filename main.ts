@@ -7,6 +7,7 @@ import { simpleGit } from "simple-git";
 import Store from "electron-store";
 import { exec } from "child_process";
 import { promisify } from "util";
+import { v4 as uuidv4 } from "uuid";
 
 const execAsync = promisify(exec);
 
@@ -25,6 +26,7 @@ interface PersistedSession {
   config: SessionConfig;
   worktreePath: string;
   createdAt: number;
+  sessionUuid: string;
 }
 
 let mainWindow: BrowserWindow;
@@ -182,6 +184,9 @@ ipcMain.on("create-session", async (event, config: SessionConfig) => {
     // Create git worktree
     const worktreePath = await createWorktree(config.projectDir, config.parentBranch, sessionNumber);
 
+    // Generate UUID for this session
+    const sessionUuid = uuidv4();
+
     // Create persisted session metadata
     const persistedSession: PersistedSession = {
       id: sessionId,
@@ -190,6 +195,7 @@ ipcMain.on("create-session", async (event, config: SessionConfig) => {
       config,
       worktreePath,
       createdAt: Date.now(),
+      sessionUuid,
     };
 
     // Save to store
@@ -235,7 +241,11 @@ ipcMain.on("create-session", async (event, config: SessionConfig) => {
 
           // Auto-run the selected coding agent
           if (config.codingAgent === "claude") {
-            const claudeCmd = config.skipPermissions ? "claude --dangerously-skip-permissions\r" : "claude\r";
+            // New session always uses --session-id
+            const sessionFlag = `--session-id ${sessionUuid}`;
+            const skipPermissionsFlag = config.skipPermissions ? "--dangerously-skip-permissions" : "";
+            const flags = [sessionFlag, skipPermissionsFlag].filter(f => f).join(" ");
+            const claudeCmd = `claude ${flags}\r`;
             ptyProcess.write(claudeCmd);
           } else if (config.codingAgent === "codex") {
             ptyProcess.write("codex\r");
@@ -261,7 +271,11 @@ ipcMain.on("create-session", async (event, config: SessionConfig) => {
 
           // Auto-run the selected coding agent
           if (config.codingAgent === "claude") {
-            const claudeCmd = config.skipPermissions ? "claude --dangerously-skip-permissions\r" : "claude\r";
+            // New session always uses --session-id
+            const sessionFlag = `--session-id ${sessionUuid}`;
+            const skipPermissionsFlag = config.skipPermissions ? "--dangerously-skip-permissions" : "";
+            const flags = [sessionFlag, skipPermissionsFlag].filter(f => f).join(" ");
+            const claudeCmd = `claude ${flags}\r`;
             ptyProcess.write(claudeCmd);
           } else if (config.codingAgent === "codex") {
             ptyProcess.write("codex\r");
@@ -350,7 +364,11 @@ ipcMain.on("reopen-session", (event, sessionId: string) => {
         }
 
         if (session.config.codingAgent === "claude") {
-          const claudeCmd = session.config.skipPermissions ? "claude --dangerously-skip-permissions\r" : "claude\r";
+          // Reopened session always uses --resume
+          const sessionFlag = `--resume ${session.sessionUuid}`;
+          const skipPermissionsFlag = session.config.skipPermissions ? "--dangerously-skip-permissions" : "";
+          const flags = [sessionFlag, skipPermissionsFlag].filter(f => f).join(" ");
+          const claudeCmd = `claude ${flags}\r`;
           ptyProcess.write(claudeCmd);
         } else if (session.config.codingAgent === "codex") {
           ptyProcess.write("codex\r");
