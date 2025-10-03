@@ -5,6 +5,10 @@ import * as path from "path";
 import * as fs from "fs";
 import { simpleGit } from "simple-git";
 import Store from "electron-store";
+import { exec } from "child_process";
+import { promisify } from "util";
+
+const execAsync = promisify(exec);
 
 interface SessionConfig {
   projectDir: string;
@@ -326,6 +330,82 @@ ipcMain.on("delete-session", async (_event, sessionId: string) => {
 // Get all persisted sessions
 ipcMain.handle("get-all-sessions", () => {
   return getPersistedSessions();
+});
+
+// MCP Server management functions
+async function listMcpServers() {
+  try {
+    const { stdout } = await execAsync("claude mcp list");
+
+    if (stdout.includes("No MCP servers configured")) {
+      return [];
+    }
+
+    const lines = stdout.trim().split("\n").filter(line => line.trim());
+    const servers = [];
+
+    for (const line of lines) {
+      // Skip header lines, empty lines, and status messages
+      if (line.includes("MCP servers") ||
+          line.includes("---") ||
+          line.includes("Checking") ||
+          line.includes("health") ||
+          !line.trim()) {
+        continue;
+      }
+
+      // Parse format: "name: url (type) - status" or just "name"
+      // Extract just the server name (before the colon)
+      const colonIndex = line.indexOf(":");
+      const serverName = colonIndex > 0 ? line.substring(0, colonIndex).trim() : line.trim();
+
+      if (serverName) {
+        servers.push({ name: serverName });
+      }
+    }
+
+    return servers;
+  } catch (error) {
+    console.error("Error listing MCP servers:", error);
+    return [];
+  }
+}
+
+async function addMcpServer(name: string, config: any) {
+  // Use add-json to support full configuration including env vars, headers, etc.
+  const jsonConfig = JSON.stringify(config);
+  await execAsync(`claude mcp add-json "${name}" '${jsonConfig}'`);
+}
+
+async function removeMcpServer(name: string) {
+  await execAsync(`claude mcp remove "${name}"`);
+}
+
+ipcMain.handle("list-mcp-servers", async () => {
+  try {
+    return await listMcpServers();
+  } catch (error) {
+    console.error("Error listing MCP servers:", error);
+    return [];
+  }
+});
+
+ipcMain.handle("add-mcp-server", async (_event, name: string, config: any) => {
+  try {
+    await addMcpServer(name, config);
+  } catch (error) {
+    console.error("Error adding MCP server:", error);
+    throw error;
+  }
+});
+
+ipcMain.handle("remove-mcp-server", async (_event, name: string) => {
+  try {
+    await removeMcpServer(name);
+  } catch (error) {
+    console.error("Error removing MCP server:", error);
+    throw error;
+  }
 });
 
 const createWindow = () => {

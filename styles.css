@@ -24,12 +24,16 @@
     @apply p-2;
   }
 
-  .sidebar-section-title {
-    @apply text-xs text-gray-400 px-2 py-1 mb-1;
+  .sidebar-section-header {
+    @apply flex items-center justify-between px-2 py-1 mb-1;
   }
 
-  .sidebar-footer {
-    @apply p-3 border-t border-gray-700;
+  .sidebar-section-title {
+    @apply text-xs text-gray-400;
+  }
+
+  .section-add-btn {
+    @apply text-gray-400 hover:text-white hover:bg-gray-700 text-sm w-5 h-5 flex items-center justify-center rounded transition-all;
   }
 
   /* Session List Item */
@@ -122,6 +126,8 @@
 
   .form-input {
     @apply w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white focus:outline-none focus:border-blue-500;
+    font-family: inherit;
+    resize: vertical;
   }
 
   .form-select {

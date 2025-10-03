@@ -23,15 +23,20 @@
 
         <div class="sidebar-content">
           <div class="sidebar-section">
-            <div class="sidebar-section-title">SESSIONS</div>
+            <div class="sidebar-section-header">
+              <div class="sidebar-section-title">SESSIONS</div>
+              <button id="new-session" class="section-add-btn" title="New Session">+</button>
+            </div>
             <div id="session-list"></div>
           </div>
-        </div>
 
-        <div class="sidebar-footer">
-          <button id="new-session" class="btn-primary">
-            + New Session
-          </button>
+          <div class="sidebar-section">
+            <div class="sidebar-section-header">
+              <div class="sidebar-section-title">MCP SERVERS</div>
+              <button id="add-mcp-server" class="section-add-btn" title="Add MCP Server">+</button>
+            </div>
+            <div id="mcp-server-list"></div>
+          </div>
         </div>
       </div>
 
@@ -76,6 +81,67 @@
         <div class="btn-group">
           <button id="cancel-session" class="btn-secondary">Cancel</button>
           <button id="create-session" class="btn-primary">Create Session</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- MCP Server Modal -->
+    <div id="mcp-modal" class="modal-overlay hidden">
+      <div class="modal">
+        <h2 class="modal-title">Add MCP Server</h2>
+
+        <div class="form-group">
+          <label class="form-label">Server Name</label>
+          <input type="text" id="mcp-name" class="form-input" placeholder="e.g., my-server" />
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Server Type</label>
+          <select id="mcp-type" class="form-select">
+            <option value="local">Local</option>
+            <option value="remote">Remote</option>
+          </select>
+        </div>
+
+        <!-- Local Server Fields -->
+        <div id="local-fields">
+          <div class="form-group">
+            <label class="form-label">Command</label>
+            <input type="text" id="mcp-command" class="form-input" placeholder="e.g., node, npx" />
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Arguments (space-separated)</label>
+            <input type="text" id="mcp-args" class="form-input" placeholder="e.g., /path/to/server.js or -s @modelcontextprotocol/server-filesystem" />
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Environment Variables (optional, JSON)</label>
+            <textarea id="mcp-env" class="form-input" rows="3" placeholder='{"API_KEY": "your_api_key"}'></textarea>
+          </div>
+        </div>
+
+        <!-- Remote Server Fields -->
+        <div id="remote-fields" style="display: none;">
+          <div class="form-group">
+            <label class="form-label">Server URL</label>
+            <input type="text" id="mcp-url" class="form-input" placeholder="https://your-server-url.com/mcp" />
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Headers (optional, JSON)</label>
+            <textarea id="mcp-headers" class="form-input" rows="3" placeholder='{"Authorization": "Bearer your-token"}'></textarea>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Always Allow Tools (optional, comma-separated)</label>
+          <input type="text" id="mcp-always-allow" class="form-input" placeholder="e.g., tool1, tool2, tool3" />
+        </div>
+
+        <div class="btn-group">
+          <button id="cancel-mcp" class="btn-secondary">Cancel</button>
+          <button id="add-mcp" class="btn-primary">Add Server</button>
         </div>
       </div>
     </div>

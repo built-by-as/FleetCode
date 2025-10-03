@@ -28,8 +28,18 @@ interface Session {
   hasActivePty: boolean;
 }
 
+interface McpServer {
+  name: string;
+  command?: string;
+  args?: string[];
+  env?: Record<string, string>;
+  url?: string;
+  type?: "stdio" | "sse";
+}
+
 const sessions = new Map<string, Session>();
 let activeSessionId: string | null = null;
+let mcpServers: McpServer[] = [];
 
 function createTerminalUI(sessionId: string) {
   const term = new Terminal({
@@ -461,3 +471,176 @@ createBtn?.addEventListener("click", () => {
   parentBranchSelect.innerHTML = '<option value="">Loading branches...</option>';
   codingAgentSelect.value = "claude";
 });
+
+// MCP Server management functions
+async function loadMcpServers() {
+  try {
+    const servers = await ipcRenderer.invoke("list-mcp-servers");
+    mcpServers = servers;
+    renderMcpServers();
+  } catch (error) {
+    console.error("Failed to load MCP servers:", error);
+  }
+}
+
+function renderMcpServers() {
+  const list = document.getElementById("mcp-server-list");
+  if (!list) return;
+
+  list.innerHTML = "";
+
+  mcpServers.forEach(server => {
+    const item = document.createElement("div");
+    item.className = "session-list-item";
+    item.innerHTML = `
+      <div class="flex items-center space-x-2 flex-1">
+        <span class="session-indicator active"></span>
+        <span class="truncate">${server.name}</span>
+      </div>
+      <button class="session-delete-btn mcp-remove-btn" data-name="${server.name}" title="Remove server">×</button>
+    `;
+
+    const removeBtn = item.querySelector(".mcp-remove-btn");
+    removeBtn?.addEventListener("click", async (e) => {
+      e.stopPropagation();
+      if (confirm(`Remove MCP server "${server.name}"?`)) {
+        try {
+          await ipcRenderer.invoke("remove-mcp-server", server.name);
+          await loadMcpServers();
+        } catch (error) {
+          alert(`Failed to remove server: ${error}`);
+        }
+      }
+    });
+
+    list.appendChild(item);
+  });
+}
+
+// MCP Modal handling
+const mcpModal = document.getElementById("mcp-modal");
+const mcpNameInput = document.getElementById("mcp-name") as HTMLInputElement;
+const mcpTypeSelect = document.getElementById("mcp-type") as HTMLSelectElement;
+const mcpCommandInput = document.getElementById("mcp-command") as HTMLInputElement;
+const mcpArgsInput = document.getElementById("mcp-args") as HTMLInputElement;
+const mcpEnvInput = document.getElementById("mcp-env") as HTMLTextAreaElement;
+const mcpUrlInput = document.getElementById("mcp-url") as HTMLInputElement;
+const mcpHeadersInput = document.getElementById("mcp-headers") as HTMLTextAreaElement;
+const mcpAlwaysAllowInput = document.getElementById("mcp-always-allow") as HTMLInputElement;
+const localFields = document.getElementById("local-fields");
+const remoteFields = document.getElementById("remote-fields");
+const cancelMcpBtn = document.getElementById("cancel-mcp");
+const addMcpBtn = document.getElementById("add-mcp");
+
+// Toggle fields based on server type
+mcpTypeSelect?.addEventListener("change", () => {
+  if (mcpTypeSelect.value === "local") {
+    localFields!.style.display = "block";
+    remoteFields!.style.display = "none";
+  } else {
+    localFields!.style.display = "none";
+    remoteFields!.style.display = "block";
+  }
+});
+
+// Add MCP server button - opens modal
+document.getElementById("add-mcp-server")?.addEventListener("click", () => {
+  mcpModal?.classList.remove("hidden");
+  mcpNameInput.value = "";
+  mcpTypeSelect.value = "local";
+  mcpCommandInput.value = "";
+  mcpArgsInput.value = "";
+  mcpEnvInput.value = "";
+  mcpUrlInput.value = "";
+  mcpHeadersInput.value = "";
+  mcpAlwaysAllowInput.value = "";
+  localFields!.style.display = "block";
+  remoteFields!.style.display = "none";
+});
+
+// Cancel MCP button
+cancelMcpBtn?.addEventListener("click", () => {
+  mcpModal?.classList.add("hidden");
+});
+
+// Add MCP button
+addMcpBtn?.addEventListener("click", async () => {
+  const name = mcpNameInput.value.trim();
+  const serverType = mcpTypeSelect.value;
+
+  if (!name) {
+    alert("Please enter a server name");
+    return;
+  }
+
+  const config: any = {};
+
+  if (serverType === "local") {
+    config.type = "stdio";
+
+    const command = mcpCommandInput.value.trim();
+    const argsInput = mcpArgsInput.value.trim();
+
+    if (!command) {
+      alert("Please enter a command");
+      return;
+    }
+
+    config.command = command;
+    if (argsInput) {
+      config.args = argsInput.split(" ").filter(a => a.trim());
+    }
+
+    // Parse environment variables if provided
+    const envInput = mcpEnvInput.value.trim();
+    if (envInput) {
+      try {
+        config.env = JSON.parse(envInput);
+      } catch (error) {
+        alert("Invalid JSON for environment variables");
+        return;
+      }
+    }
+  } else {
+    // Remote server
+    config.type = "sse";
+
+    const url = mcpUrlInput.value.trim();
+
+    if (!url) {
+      alert("Please enter a server URL");
+      return;
+    }
+
+    config.url = url;
+
+    // Parse headers if provided
+    const headersInput = mcpHeadersInput.value.trim();
+    if (headersInput) {
+      try {
+        config.headers = JSON.parse(headersInput);
+      } catch (error) {
+        alert("Invalid JSON for headers");
+        return;
+      }
+    }
+  }
+
+  // Parse always allow tools
+  const alwaysAllowInput = mcpAlwaysAllowInput.value.trim();
+  if (alwaysAllowInput) {
+    config.alwaysAllow = alwaysAllowInput.split(",").map(t => t.trim()).filter(t => t);
+  }
+
+  try {
+    await ipcRenderer.invoke("add-mcp-server", name, config);
+    await loadMcpServers();
+    mcpModal?.classList.add("hidden");
+  } catch (error) {
+    console.error("Error adding server:", error);
+    alert(`Failed to add server: ${error}`);
+  }
+});
+
+// Load MCP servers on startup
+loadMcpServers();
