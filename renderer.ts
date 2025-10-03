@@ -8,19 +8,30 @@ interface SessionConfig {
   codingAgent: string;
 }
 
-interface Session {
+interface PersistedSession {
   id: string;
-  terminal: Terminal;
-  fitAddon: FitAddon;
-  element: HTMLDivElement;
+  number: number;
   name: string;
   config: SessionConfig;
+  worktreePath: string;
+  createdAt: number;
+}
+
+interface Session {
+  id: string;
+  terminal: Terminal | null;
+  fitAddon: FitAddon | null;
+  element: HTMLDivElement | null;
+  name: string;
+  config: SessionConfig;
+  worktreePath: string;
+  hasActivePty: boolean;
 }
 
 const sessions = new Map<string, Session>();
 let activeSessionId: string | null = null;
 
-function createSession(sessionId: string, name: string, config: SessionConfig) {
+function createTerminalUI(sessionId: string) {
   const term = new Terminal({
     cursorBlink: true,
     fontSize: 14,
@@ -50,26 +61,6 @@ function createSession(sessionId: string, name: string, config: SessionConfig) {
     ipcRenderer.send("session-input", sessionId, data);
   });
 
-  const session: Session = {
-    id: sessionId,
-    terminal: term,
-    fitAddon,
-    element: sessionElement,
-    name,
-    config,
-  };
-
-  sessions.set(sessionId, session);
-
-  // Add to sidebar
-  addToSidebar(sessionId, name);
-
-  // Add tab
-  addTab(sessionId, name);
-
-  // Switch to this session
-  switchToSession(sessionId);
-
   // Handle resize
   const resizeHandler = () => {
     if (activeSessionId === sessionId) {
@@ -79,10 +70,72 @@ function createSession(sessionId: string, name: string, config: SessionConfig) {
   };
   window.addEventListener("resize", resizeHandler);
 
+  return { terminal: term, fitAddon, element: sessionElement };
+}
+
+function addSession(persistedSession: PersistedSession, hasActivePty: boolean) {
+  const session: Session = {
+    id: persistedSession.id,
+    terminal: null,
+    fitAddon: null,
+    element: null,
+    name: persistedSession.name,
+    config: persistedSession.config,
+    worktreePath: persistedSession.worktreePath,
+    hasActivePty,
+  };
+
+  sessions.set(persistedSession.id, session);
+
+  // Add to sidebar
+  addToSidebar(persistedSession.id, persistedSession.name, hasActivePty);
+
+  // Only add tab if terminal is active
+  if (hasActivePty) {
+    addTab(persistedSession.id, persistedSession.name);
+  }
+
   return session;
 }
 
-function addToSidebar(sessionId: string, name: string) {
+function activateSession(sessionId: string) {
+  const session = sessions.get(sessionId);
+  if (!session) return;
+
+  // If terminal UI doesn't exist yet, create it
+  if (!session.terminal) {
+    const ui = createTerminalUI(sessionId);
+    session.terminal = ui.terminal;
+    session.fitAddon = ui.fitAddon;
+    session.element = ui.element;
+  }
+
+  session.hasActivePty = true;
+  updateSessionState(sessionId, true);
+
+  // Add tab if it doesn't exist
+  if (!document.getElementById(`tab-${sessionId}`)) {
+    addTab(sessionId, session.name);
+  }
+
+  // Switch to this session
+  switchToSession(sessionId);
+}
+
+function updateSessionState(sessionId: string, isActive: boolean) {
+  const sidebarItem = document.getElementById(`sidebar-${sessionId}`);
+  const indicator = sidebarItem?.querySelector(".session-indicator");
+
+  if (indicator) {
+    if (isActive) {
+      indicator.classList.add("active");
+    } else {
+      indicator.classList.remove("active");
+    }
+  }
+}
+
+function addToSidebar(sessionId: string, name: string, hasActivePty: boolean) {
   const list = document.getElementById("session-list");
   if (!list) return;
 
@@ -90,23 +143,40 @@ function addToSidebar(sessionId: string, name: string) {
   item.id = `sidebar-${sessionId}`;
   item.className = "session-list-item";
   item.innerHTML = `
-    <span class="truncate">${name}</span>
-    <button class="session-close-btn" data-id="${sessionId}">×</button>
+    <div class="flex items-center space-x-2 flex-1">
+      <span class="session-indicator ${hasActivePty ? 'active' : ''}"></span>
+      <span class="truncate">${name}</span>
+    </div>
+    <button class="session-delete-btn" data-id="${sessionId}" title="Delete session">×</button>
   `;
 
   item.addEventListener("click", (e) => {
-    if (!(e.target as HTMLElement).classList.contains("session-close-btn")) {
-      switchToSession(sessionId);
+    const target = e.target as HTMLElement;
+    if (!target.classList.contains("session-delete-btn")) {
+      handleSessionClick(sessionId);
     }
   });
 
-  const closeBtn = item.querySelector(".session-close-btn");
-  closeBtn?.addEventListener("click", (e) => {
+  const deleteBtn = item.querySelector(".session-delete-btn");
+  deleteBtn?.addEventListener("click", (e) => {
     e.stopPropagation();
-    closeSession(sessionId);
+    deleteSession(sessionId);
   });
 
   list.appendChild(item);
+}
+
+function handleSessionClick(sessionId: string) {
+  const session = sessions.get(sessionId);
+  if (!session) return;
+
+  if (session.hasActivePty) {
+    // Just switch to it
+    switchToSession(sessionId);
+  } else {
+    // Reopen the session
+    ipcRenderer.send("reopen-session", sessionId);
+  }
 }
 
 function addTab(sessionId: string, name: string) {
@@ -139,14 +209,16 @@ function addTab(sessionId: string, name: string) {
 function switchToSession(sessionId: string) {
   // Hide all sessions
   sessions.forEach((session, id) => {
-    session.element.classList.remove("active");
+    if (session.element) {
+      session.element.classList.remove("active");
+    }
     document.getElementById(`tab-${id}`)?.classList.remove("active");
     document.getElementById(`sidebar-${id}`)?.classList.remove("active");
   });
 
   // Show active session
   const session = sessions.get(sessionId);
-  if (session) {
+  if (session && session.element && session.terminal && session.fitAddon) {
     session.element.classList.add("active");
     document.getElementById(`tab-${sessionId}`)?.classList.add("active");
     document.getElementById(`sidebar-${sessionId}`)?.classList.add("active");
@@ -155,8 +227,10 @@ function switchToSession(sessionId: string) {
     // Focus and resize
     session.terminal.focus();
     setTimeout(() => {
-      session.fitAddon.fit();
-      ipcRenderer.send("session-resize", sessionId, session.terminal.cols, session.terminal.rows);
+      if (session.fitAddon && session.terminal) {
+        session.fitAddon.fit();
+        ipcRenderer.send("session-resize", sessionId, session.terminal.cols, session.terminal.rows);
+      }
     }, 0);
   }
 }
@@ -165,23 +239,70 @@ function closeSession(sessionId: string) {
   const session = sessions.get(sessionId);
   if (!session) return;
 
+  // Remove terminal UI
+  if (session.element) {
+    session.element.remove();
+  }
+  if (session.terminal) {
+    session.terminal.dispose();
+  }
+
+  // Remove tab
+  document.getElementById(`tab-${sessionId}`)?.remove();
+
+  // Update session state
+  session.terminal = null;
+  session.fitAddon = null;
+  session.element = null;
+  session.hasActivePty = false;
+
+  // Update UI indicator
+  updateSessionState(sessionId, false);
+
+  // Close PTY in main process
+  ipcRenderer.send("close-session", sessionId);
+
+  // Switch to another active session
+  if (activeSessionId === sessionId) {
+    const activeSessions = Array.from(sessions.values()).filter(s => s.hasActivePty);
+    if (activeSessions.length > 0) {
+      switchToSession(activeSessions[0].id);
+    } else {
+      activeSessionId = null;
+    }
+  }
+}
+
+function deleteSession(sessionId: string) {
+  const session = sessions.get(sessionId);
+  if (!session) return;
+
+  // Confirm deletion
+  if (!confirm(`Delete ${session.name}? This will remove the git worktree.`)) {
+    return;
+  }
+
   // Remove from UI
-  session.element.remove();
+  if (session.element) {
+    session.element.remove();
+  }
+  if (session.terminal) {
+    session.terminal.dispose();
+  }
   document.getElementById(`tab-${sessionId}`)?.remove();
   document.getElementById(`sidebar-${sessionId}`)?.remove();
 
-  // Dispose terminal
-  session.terminal.dispose();
+  // Remove from sessions map
   sessions.delete(sessionId);
 
-  // Close in main process
-  ipcRenderer.send("close-session", sessionId);
+  // Delete in main process (handles worktree removal)
+  ipcRenderer.send("delete-session", sessionId);
 
   // Switch to another session
   if (activeSessionId === sessionId) {
-    const remainingSessions = Array.from(sessions.keys());
+    const remainingSessions = Array.from(sessions.values()).filter(s => s.hasActivePty);
     if (remainingSessions.length > 0) {
-      switchToSession(remainingSessions[0]);
+      switchToSession(remainingSessions[0].id);
     } else {
       activeSessionId = null;
     }
@@ -191,15 +312,48 @@ function closeSession(sessionId: string) {
 // Handle session output
 ipcRenderer.on("session-output", (_event, sessionId: string, data: string) => {
   const session = sessions.get(sessionId);
-  if (session) {
+  if (session && session.terminal) {
     session.terminal.write(data);
   }
 });
 
 // Handle session created
-ipcRenderer.on("session-created", (_event, sessionId: string, config: SessionConfig) => {
-  const name = `Session ${sessions.size + 1}`;
-  createSession(sessionId, name, config);
+ipcRenderer.on("session-created", (_event, sessionId: string, persistedSession: any) => {
+  const session = addSession(persistedSession, true);
+  activateSession(sessionId);
+});
+
+// Handle session reopened
+ipcRenderer.on("session-reopened", (_event, sessionId: string) => {
+  activateSession(sessionId);
+});
+
+// Handle session deleted
+ipcRenderer.on("session-deleted", (_event, sessionId: string) => {
+  const session = sessions.get(sessionId);
+  if (session) {
+    if (session.element) session.element.remove();
+    if (session.terminal) session.terminal.dispose();
+    document.getElementById(`tab-${sessionId}`)?.remove();
+    document.getElementById(`sidebar-${sessionId}`)?.remove();
+    sessions.delete(sessionId);
+
+    if (activeSessionId === sessionId) {
+      const remainingSessions = Array.from(sessions.values()).filter(s => s.hasActivePty);
+      if (remainingSessions.length > 0) {
+        switchToSession(remainingSessions[0].id);
+      } else {
+        activeSessionId = null;
+      }
+    }
+  }
+});
+
+// Load persisted sessions on startup
+ipcRenderer.on("load-persisted-sessions", (_event, persistedSessions: PersistedSession[]) => {
+  persistedSessions.forEach(ps => {
+    addSession(ps, false);
+  });
 });
 
 // Modal handling

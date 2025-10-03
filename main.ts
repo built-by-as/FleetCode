@@ -1,6 +1,8 @@
 import { app, BrowserWindow, ipcMain, dialog } from "electron";
 import * as pty from "node-pty";
 import * as os from "os";
+import * as path from "path";
+import * as fs from "fs";
 import { simpleGit } from "simple-git";
 import Store from "electron-store";
 
@@ -10,9 +12,78 @@ interface SessionConfig {
   codingAgent: string;
 }
 
+interface PersistedSession {
+  id: string;
+  number: number;
+  name: string;
+  config: SessionConfig;
+  worktreePath: string;
+  createdAt: number;
+}
+
 let mainWindow: BrowserWindow;
-const sessions = new Map<string, pty.IPty>();
+const activePtyProcesses = new Map<string, pty.IPty>();
 const store = new Store();
+
+// Helper functions for session management
+function getPersistedSessions(): PersistedSession[] {
+  return (store as any).get("sessions", []);
+}
+
+function savePersistedSessions(sessions: PersistedSession[]) {
+  (store as any).set("sessions", sessions);
+}
+
+function getNextSessionNumber(): number {
+  const sessions = getPersistedSessions();
+  if (sessions.length === 0) return 1;
+  return Math.max(...sessions.map(s => s.number)) + 1;
+}
+
+// Git worktree helper functions
+async function createWorktree(projectDir: string, parentBranch: string, sessionNumber: number): Promise<string> {
+  const git = simpleGit(projectDir);
+  const fleetcodeDir = path.join(projectDir, ".fleetcode");
+  const worktreeName = `session${sessionNumber}`;
+  const worktreePath = path.join(fleetcodeDir, worktreeName);
+  const branchName = `fleetcode/session${sessionNumber}`;
+
+  // Create .fleetcode directory if it doesn't exist
+  if (!fs.existsSync(fleetcodeDir)) {
+    fs.mkdirSync(fleetcodeDir, { recursive: true });
+  }
+
+  // Check if worktree already exists and remove it
+  if (fs.existsSync(worktreePath)) {
+    try {
+      await git.raw(["worktree", "remove", worktreePath, "--force"]);
+    } catch (error) {
+      console.error("Error removing existing worktree:", error);
+    }
+  }
+
+  // Delete the branch if it exists
+  try {
+    await git.raw(["branch", "-D", branchName]);
+  } catch (error) {
+    // Branch doesn't exist, that's fine
+  }
+
+  // Create new worktree with a new branch from parent branch
+  // This creates a new branch named "fleetcode/session<N>" starting from the parent branch
+  await git.raw(["worktree", "add", "-b", branchName, worktreePath, parentBranch]);
+
+  return worktreePath;
+}
+
+async function removeWorktree(projectDir: string, worktreePath: string) {
+  const git = simpleGit(projectDir);
+  try {
+    await git.raw(["worktree", "remove", worktreePath, "--force"]);
+  } catch (error) {
+    console.error("Error removing worktree:", error);
+  }
+}
 
 // Open directory picker
 ipcMain.handle("select-directory", async () => {
@@ -54,19 +125,136 @@ ipcMain.on("save-settings", (_event, config: SessionConfig) => {
 });
 
 // Create new session
-ipcMain.on("create-session", (event, config: SessionConfig) => {
-  const sessionId = `session-${Date.now()}`;
-  const shell = os.platform() === "darwin" ? "zsh" : "bash";
+ipcMain.on("create-session", async (event, config: SessionConfig) => {
+  try {
+    const sessionNumber = getNextSessionNumber();
+    const sessionId = `session-${Date.now()}`;
+    const sessionName = `Session ${sessionNumber}`;
 
+    // Create git worktree
+    const worktreePath = await createWorktree(config.projectDir, config.parentBranch, sessionNumber);
+
+    // Create persisted session metadata
+    const persistedSession: PersistedSession = {
+      id: sessionId,
+      number: sessionNumber,
+      name: sessionName,
+      config,
+      worktreePath,
+      createdAt: Date.now(),
+    };
+
+    // Save to store
+    const sessions = getPersistedSessions();
+    sessions.push(persistedSession);
+    savePersistedSessions(sessions);
+
+    // Spawn PTY in worktree directory
+    const shell = os.platform() === "darwin" ? "zsh" : "bash";
+    const ptyProcess = pty.spawn(shell, [], {
+      name: "xterm-color",
+      cols: 80,
+      rows: 30,
+      cwd: worktreePath,
+      env: process.env,
+    });
+
+    activePtyProcesses.set(sessionId, ptyProcess);
+
+    let terminalReady = false;
+    let dataBuffer = "";
+
+    ptyProcess.onData((data) => {
+      mainWindow.webContents.send("session-output", sessionId, data);
+
+      // Detect when terminal is ready
+      if (!terminalReady) {
+        dataBuffer += data;
+
+        // Method 1: Look for bracketed paste mode enable sequence
+        if (dataBuffer.includes("\x1b[?2004h")) {
+          terminalReady = true;
+
+          // Auto-run the selected coding agent
+          if (config.codingAgent === "claude") {
+            ptyProcess.write("claude\r");
+          } else if (config.codingAgent === "codex") {
+            ptyProcess.write("codex\r");
+          }
+        }
+
+        // Method 2: Fallback - look for common prompt indicators
+        else if (dataBuffer.includes("$ ") || dataBuffer.includes("% ") ||
+            dataBuffer.includes("> ") || dataBuffer.includes("➜ ") ||
+            dataBuffer.includes("➜  ") ||
+            dataBuffer.includes("✗ ") || dataBuffer.includes("✓ ") ||
+            dataBuffer.endsWith("$") || dataBuffer.endsWith("%") ||
+            dataBuffer.endsWith(">") || dataBuffer.endsWith("➜") ||
+            dataBuffer.endsWith("✗") || dataBuffer.endsWith("✓")) {
+          terminalReady = true;
+
+          // Auto-run the selected coding agent
+          if (config.codingAgent === "claude") {
+            ptyProcess.write("claude\r");
+          } else if (config.codingAgent === "codex") {
+            ptyProcess.write("codex\r");
+          }
+        }
+      }
+    });
+
+    event.reply("session-created", sessionId, persistedSession);
+  } catch (error) {
+    console.error("Error creating session:", error);
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    event.reply("session-error", errorMessage);
+  }
+});
+
+// Handle session input
+ipcMain.on("session-input", (_event, sessionId: string, data: string) => {
+  const ptyProcess = activePtyProcesses.get(sessionId);
+  if (ptyProcess) {
+    ptyProcess.write(data);
+  }
+});
+
+// Handle session resize
+ipcMain.on("session-resize", (_event, sessionId: string, cols: number, rows: number) => {
+  const ptyProcess = activePtyProcesses.get(sessionId);
+  if (ptyProcess) {
+    ptyProcess.resize(cols, rows);
+  }
+});
+
+// Reopen session (spawn new PTY for existing session)
+ipcMain.on("reopen-session", (event, sessionId: string) => {
+  // Check if PTY already active
+  if (activePtyProcesses.has(sessionId)) {
+    event.reply("session-reopened", sessionId);
+    return;
+  }
+
+  // Find persisted session
+  const sessions = getPersistedSessions();
+  const session = sessions.find(s => s.id === sessionId);
+
+  if (!session) {
+    console.error("Session not found:", sessionId);
+    return;
+  }
+
+  // Spawn new PTY in worktree directory
+  const shell = os.platform() === "darwin" ? "zsh" : "bash";
   const ptyProcess = pty.spawn(shell, [], {
     name: "xterm-color",
     cols: 80,
     rows: 30,
-    cwd: config.projectDir || process.env.HOME,
+    cwd: session.worktreePath,
     env: process.env,
   });
 
-  sessions.set(sessionId, ptyProcess);
+  activePtyProcesses.set(sessionId, ptyProcess);
 
   let terminalReady = false;
   let dataBuffer = "";
@@ -74,70 +262,70 @@ ipcMain.on("create-session", (event, config: SessionConfig) => {
   ptyProcess.onData((data) => {
     mainWindow.webContents.send("session-output", sessionId, data);
 
-    // Detect when terminal is ready
+    // Detect when terminal is ready and auto-run agent
     if (!terminalReady) {
       dataBuffer += data;
 
-      // Method 1: Look for bracketed paste mode enable sequence
-      // This is sent by modern shells (zsh, bash) when ready for input
-      if (dataBuffer.includes("\x1b[?2004h")) {
+      if (dataBuffer.includes("\x1b[?2004h") ||
+          dataBuffer.includes("$ ") || dataBuffer.includes("% ") ||
+          dataBuffer.includes("➜ ") || dataBuffer.includes("✗ ") ||
+          dataBuffer.includes("✓ ")) {
         terminalReady = true;
 
-        // Auto-run the selected coding agent
-        if (config.codingAgent === "claude") {
+        if (session.config.codingAgent === "claude") {
           ptyProcess.write("claude\r");
-        } else if (config.codingAgent === "codex") {
-          ptyProcess.write("codex\r");
-        }
-      }
-
-      // Method 2: Fallback - look for common prompt indicators
-      // In case bracketed paste mode is disabled
-      else if (dataBuffer.includes("$ ") || dataBuffer.includes("% ") ||
-          dataBuffer.includes("> ") || dataBuffer.includes("➜ ") ||
-          dataBuffer.includes("➜  ") ||
-          dataBuffer.includes("✗ ") || dataBuffer.includes("✓ ") ||
-          dataBuffer.endsWith("$") || dataBuffer.endsWith("%") ||
-          dataBuffer.endsWith(">") || dataBuffer.endsWith("➜") ||
-          dataBuffer.endsWith("✗") || dataBuffer.endsWith("✓")) {
-        terminalReady = true;
-
-        // Auto-run the selected coding agent
-        if (config.codingAgent === "claude") {
-          ptyProcess.write("claude\r");
-        } else if (config.codingAgent === "codex") {
+        } else if (session.config.codingAgent === "codex") {
           ptyProcess.write("codex\r");
         }
       }
     }
   });
 
-  event.reply("session-created", sessionId, config);
+  event.reply("session-reopened", sessionId);
 });
 
-// Handle session input
-ipcMain.on("session-input", (_event, sessionId: string, data: string) => {
-  const session = sessions.get(sessionId);
-  if (session) {
-    session.write(data);
-  }
-});
-
-// Handle session resize
-ipcMain.on("session-resize", (_event, sessionId: string, cols: number, rows: number) => {
-  const session = sessions.get(sessionId);
-  if (session) {
-    session.resize(cols, rows);
-  }
-});
-
-// Handle session close
+// Close session (kill PTY but keep session)
 ipcMain.on("close-session", (_event, sessionId: string) => {
-  const session = sessions.get(sessionId);
-  if (session) {
-    session.kill();
-    sessions.delete(sessionId);
+  const ptyProcess = activePtyProcesses.get(sessionId);
+  if (ptyProcess) {
+    ptyProcess.kill();
+    activePtyProcesses.delete(sessionId);
   }
+});
+
+// Delete session (kill PTY, remove worktree, delete from store)
+ipcMain.on("delete-session", async (_event, sessionId: string) => {
+  // Kill PTY if active
+  const ptyProcess = activePtyProcesses.get(sessionId);
+  if (ptyProcess) {
+    ptyProcess.kill();
+    activePtyProcesses.delete(sessionId);
+  }
+
+  // Find and remove from persisted sessions
+  const sessions = getPersistedSessions();
+  const sessionIndex = sessions.findIndex(s => s.id === sessionId);
+
+  if (sessionIndex === -1) {
+    console.error("Session not found:", sessionId);
+    return;
+  }
+
+  const session = sessions[sessionIndex];
+
+  // Remove git worktree
+  await removeWorktree(session.config.projectDir, session.worktreePath);
+
+  // Remove from store
+  sessions.splice(sessionIndex, 1);
+  savePersistedSessions(sessions);
+
+  mainWindow.webContents.send("session-deleted", sessionId);
+});
+
+// Get all persisted sessions
+ipcMain.handle("get-all-sessions", () => {
+  return getPersistedSessions();
 });
 
 const createWindow = () => {
@@ -151,6 +339,12 @@ const createWindow = () => {
   });
 
   mainWindow.loadFile("index.html");
+
+  // Load persisted sessions once window is ready
+  mainWindow.webContents.on("did-finish-load", () => {
+    const sessions = getPersistedSessions();
+    mainWindow.webContents.send("load-persisted-sessions", sessions);
+  });
 };
 
 app.whenReady().then(() => {

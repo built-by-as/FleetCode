@@ -41,13 +41,22 @@
     @apply bg-gray-700;
   }
 
-  .session-close-btn {
-    @apply text-gray-500 hover:text-red-500 ml-2;
+  .session-indicator {
+    @apply w-2 h-2 rounded-full bg-gray-600;
+    transition: background-color 0.2s;
+  }
+
+  .session-indicator.active {
+    @apply bg-green-500;
+  }
+
+  .session-delete-btn {
+    @apply text-gray-500 hover:text-red-500;
     opacity: 0;
     transition: opacity 0.2s;
   }
 
-  .session-list-item:hover .session-close-btn {
+  .session-list-item:hover .session-delete-btn {
     opacity: 1;
   }
 
