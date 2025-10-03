@@ -352,28 +352,14 @@ function addTab(sessionId: string, name: string) {
 
 function markSessionAsUnread(sessionId: string) {
   const session = sessions.get(sessionId);
-  if (!session) {
-    console.log(`[Unread] ERROR: Session ${sessionId} not found`);
-    return;
-  }
+  if (!session) return;
 
-  console.log(`[Unread] Setting hasUnreadActivity flag for session ${sessionId}`);
   session.hasUnreadActivity = true;
 
   // Add unread indicator to tab
   const tab = document.getElementById(`tab-${sessionId}`);
-  console.log(`[Unread] Tab element for ${sessionId}:`, tab);
   if (tab) {
-    console.log(`[Unread] Tab classes before:`, tab.className);
-    if (!tab.classList.contains("unread")) {
-      tab.classList.add("unread");
-      console.log(`[Unread] ✓ Added 'unread' class to tab ${sessionId}`);
-      console.log(`[Unread] Tab classes after:`, tab.className);
-    } else {
-      console.log(`[Unread] Tab ${sessionId} already has 'unread' class`);
-    }
-  } else {
-    console.log(`[Unread] ERROR: No tab element found for session ${sessionId}`);
+    tab.classList.add("unread");
   }
 }
 
@@ -521,7 +507,7 @@ ipcRenderer.on("session-output", (_event, sessionId: string, data: string) => {
     session.terminal.write(filteredData);
 
     // Only mark as unread if this is not the active session
-    if (activeSessionId !== sessionId && session.hasActivePty) {
+    if (activeSessionId !== sessionId && session.hasActivePty && !session.hasUnreadActivity) {
       // Clear any existing idle timer
       const existingTimer = sessionIdleTimers.get(sessionId);
       if (existingTimer) {
