@@ -2,7 +2,6 @@ import { app, BrowserWindow, ipcMain, dialog } from "electron";
 import * as pty from "node-pty";
 import * as os from "os";
 import { simpleGit } from "simple-git";
-import Store from "electron-store";
 
 interface SessionConfig {
   projectDir: string;
@@ -12,7 +11,6 @@ interface SessionConfig {
 
 let mainWindow: BrowserWindow;
 const sessions = new Map<string, pty.IPty>();
-const store = new Store();
 
 // Open directory picker
 ipcMain.handle("select-directory", async () => {
@@ -54,8 +52,48 @@ ipcMain.on("create-session", (event, config: SessionConfig) => {
 
   sessions.set(sessionId, ptyProcess);
 
+  let terminalReady = false;
+  let dataBuffer = "";
+
   ptyProcess.onData((data) => {
     mainWindow.webContents.send("session-output", sessionId, data);
+
+    // Detect when terminal is ready
+    if (!terminalReady) {
+      dataBuffer += data;
+
+      // Method 1: Look for bracketed paste mode enable sequence
+      // This is sent by modern shells (zsh, bash) when ready for input
+      if (dataBuffer.includes("\x1b[?2004h")) {
+        terminalReady = true;
+
+        // Auto-run the selected coding agent
+        if (config.codingAgent === "claude") {
+          ptyProcess.write("claude\r");
+        } else if (config.codingAgent === "codex") {
+          ptyProcess.write("codex\r");
+        }
+      }
+
+      // Method 2: Fallback - look for common prompt indicators
+      // In case bracketed paste mode is disabled
+      else if (dataBuffer.includes("$ ") || dataBuffer.includes("% ") ||
+          dataBuffer.includes("> ") || dataBuffer.includes("➜ ") ||
+          dataBuffer.includes("➜  ") ||
+          dataBuffer.includes("✗ ") || dataBuffer.includes("✓ ") ||
+          dataBuffer.endsWith("$") || dataBuffer.endsWith("%") ||
+          dataBuffer.endsWith(">") || dataBuffer.endsWith("➜") ||
+          dataBuffer.endsWith("✗") || dataBuffer.endsWith("✓")) {
+        terminalReady = true;
+
+        // Auto-run the selected coding agent
+        if (config.codingAgent === "claude") {
+          ptyProcess.write("claude\r");
+        } else if (config.codingAgent === "codex") {
+          ptyProcess.write("codex\r");
+        }
+      }
+    }
   });
 
   event.reply("session-created", sessionId, config);
