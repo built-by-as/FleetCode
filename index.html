@@ -78,9 +78,32 @@
           </select>
         </div>
 
+        <div class="form-group">
+          <label class="flex items-center space-x-2 cursor-pointer">
+            <input type="checkbox" id="skip-permissions" class="form-checkbox" checked />
+            <span class="text-sm text-gray-300">Skip permissions (use --dangerously-skip-permissions)</span>
+          </label>
+        </div>
+
         <div class="btn-group">
           <button id="cancel-session" class="btn-secondary">Cancel</button>
           <button id="create-session" class="btn-primary">Create Session</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- MCP Server Details Modal -->
+    <div id="mcp-details-modal" class="modal-overlay hidden">
+      <div class="modal">
+        <h2 class="modal-title" id="mcp-details-title">Server Details</h2>
+
+        <div id="mcp-details-content" class="space-y-3 text-sm text-gray-300">
+          <!-- Details will be populated here -->
+        </div>
+
+        <div class="btn-group">
+          <button id="close-mcp-details" class="btn-secondary">Close</button>
+          <button id="remove-mcp-details" class="btn-danger">Remove Server</button>
         </div>
       </div>
     </div>

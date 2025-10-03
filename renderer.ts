@@ -6,6 +6,7 @@ interface SessionConfig {
   projectDir: string;
   parentBranch: string;
   codingAgent: string;
+  skipPermissions: boolean;
 }
 
 interface PersistedSession {
@@ -30,6 +31,7 @@ interface Session {
 
 interface McpServer {
   name: string;
+  connected?: boolean;
   command?: string;
   args?: string[];
   env?: Record<string, string>;
@@ -153,16 +155,41 @@ function addToSidebar(sessionId: string, name: string, hasActivePty: boolean) {
   item.id = `sidebar-${sessionId}`;
   item.className = "session-list-item";
   item.innerHTML = `
-    <div class="flex items-center space-x-2 flex-1">
+    <div class="flex items-center space-x-2 flex-1 session-name-container">
       <span class="session-indicator ${hasActivePty ? 'active' : ''}"></span>
-      <span class="truncate">${name}</span>
+      <span class="truncate session-name-text" data-id="${sessionId}">${name}</span>
+      <input type="text" class="session-name-input hidden" data-id="${sessionId}" value="${name}" />
     </div>
     <button class="session-delete-btn" data-id="${sessionId}" title="Delete session">×</button>
   `;
 
+  // Click on session name to edit
+  const nameText = item.querySelector(".session-name-text");
+  const nameInput = item.querySelector(".session-name-input") as HTMLInputElement;
+
+  nameText?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    startEditingSessionName(sessionId);
+  });
+
+  // Handle input blur and enter key
+  nameInput?.addEventListener("blur", () => {
+    finishEditingSessionName(sessionId);
+  });
+
+  nameInput?.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      finishEditingSessionName(sessionId);
+    } else if (e.key === "Escape") {
+      cancelEditingSessionName(sessionId);
+    }
+  });
+
   item.addEventListener("click", (e) => {
     const target = e.target as HTMLElement;
-    if (!target.classList.contains("session-delete-btn")) {
+    if (!target.classList.contains("session-delete-btn") &&
+        !target.classList.contains("session-name-text") &&
+        !target.classList.contains("session-name-input")) {
       handleSessionClick(sessionId);
     }
   });
@@ -174,6 +201,62 @@ function addToSidebar(sessionId: string, name: string, hasActivePty: boolean) {
   });
 
   list.appendChild(item);
+}
+
+function startEditingSessionName(sessionId: string) {
+  const sidebarItem = document.getElementById(`sidebar-${sessionId}`);
+  const nameText = sidebarItem?.querySelector(".session-name-text");
+  const nameInput = sidebarItem?.querySelector(".session-name-input") as HTMLInputElement;
+
+  if (nameText && nameInput) {
+    nameText.classList.add("hidden");
+    nameInput.classList.remove("hidden");
+    nameInput.focus();
+    nameInput.select();
+  }
+}
+
+function finishEditingSessionName(sessionId: string) {
+  const sidebarItem = document.getElementById(`sidebar-${sessionId}`);
+  const nameText = sidebarItem?.querySelector(".session-name-text");
+  const nameInput = sidebarItem?.querySelector(".session-name-input") as HTMLInputElement;
+  const session = sessions.get(sessionId);
+
+  if (nameText && nameInput && session) {
+    const newName = nameInput.value.trim();
+    if (newName && newName !== session.name) {
+      // Update session name
+      session.name = newName;
+      nameText.textContent = newName;
+
+      // Update tab name if exists
+      const tab = document.getElementById(`tab-${sessionId}`);
+      const tabName = tab?.querySelector(".tab-name");
+      if (tabName) {
+        tabName.textContent = newName;
+      }
+
+      // Save to backend
+      ipcRenderer.send("rename-session", sessionId, newName);
+    }
+
+    nameInput.classList.add("hidden");
+    nameText.classList.remove("hidden");
+  }
+}
+
+function cancelEditingSessionName(sessionId: string) {
+  const sidebarItem = document.getElementById(`sidebar-${sessionId}`);
+  const nameText = sidebarItem?.querySelector(".session-name-text");
+  const nameInput = sidebarItem?.querySelector(".session-name-input") as HTMLInputElement;
+  const session = sessions.get(sessionId);
+
+  if (nameText && nameInput && session) {
+    // Reset to original name
+    nameInput.value = session.name;
+    nameInput.classList.add("hidden");
+    nameText.classList.remove("hidden");
+  }
 }
 
 function handleSessionClick(sessionId: string) {
@@ -371,11 +454,22 @@ const modal = document.getElementById("config-modal");
 const projectDirInput = document.getElementById("project-dir") as HTMLInputElement;
 const parentBranchSelect = document.getElementById("parent-branch") as HTMLSelectElement;
 const codingAgentSelect = document.getElementById("coding-agent") as HTMLSelectElement;
+const skipPermissionsCheckbox = document.getElementById("skip-permissions") as HTMLInputElement;
+const skipPermissionsGroup = skipPermissionsCheckbox?.parentElement?.parentElement;
 const browseDirBtn = document.getElementById("browse-dir");
 const cancelBtn = document.getElementById("cancel-session");
 const createBtn = document.getElementById("create-session");
 
 let selectedDirectory = "";
+
+// Toggle skip permissions checkbox visibility based on coding agent
+codingAgentSelect?.addEventListener("change", () => {
+  if (codingAgentSelect.value === "claude") {
+    skipPermissionsGroup?.classList.remove("hidden");
+  } else {
+    skipPermissionsGroup?.classList.add("hidden");
+  }
+});
 
 // New session button - opens modal
 document.getElementById("new-session")?.addEventListener("click", async () => {
@@ -410,6 +504,18 @@ document.getElementById("new-session")?.addEventListener("click", async () => {
   // Set last used coding agent
   if (lastSettings.codingAgent) {
     codingAgentSelect.value = lastSettings.codingAgent;
+  }
+
+  // Set last used skip permissions setting and visibility
+  if (lastSettings.skipPermissions !== undefined) {
+    skipPermissionsCheckbox.checked = lastSettings.skipPermissions;
+  }
+
+  // Show/hide skip permissions based on coding agent
+  if (lastSettings.codingAgent === "codex") {
+    skipPermissionsGroup?.classList.add("hidden");
+  } else {
+    skipPermissionsGroup?.classList.remove("hidden");
   }
 });
 
@@ -456,6 +562,7 @@ createBtn?.addEventListener("click", () => {
     projectDir: selectedDirectory,
     parentBranch: parentBranchSelect.value,
     codingAgent: codingAgentSelect.value,
+    skipPermissions: codingAgentSelect.value === "claude" ? skipPermissionsCheckbox.checked : false,
   };
 
   // Save settings for next time
@@ -474,12 +581,26 @@ createBtn?.addEventListener("click", () => {
 
 // MCP Server management functions
 async function loadMcpServers() {
+  const addMcpServerBtn = document.getElementById("add-mcp-server");
+
+  // Show loading spinner
+  if (addMcpServerBtn) {
+    addMcpServerBtn.innerHTML = '<span class="loading-spinner"></span>';
+    addMcpServerBtn.classList.add("pointer-events-none");
+  }
+
   try {
     const servers = await ipcRenderer.invoke("list-mcp-servers");
     mcpServers = servers;
     renderMcpServers();
   } catch (error) {
     console.error("Failed to load MCP servers:", error);
+  } finally {
+    // Restore button
+    if (addMcpServerBtn) {
+      addMcpServerBtn.innerHTML = '+';
+      addMcpServerBtn.classList.remove("pointer-events-none");
+    }
   }
 }
 
@@ -492,13 +613,22 @@ function renderMcpServers() {
   mcpServers.forEach(server => {
     const item = document.createElement("div");
     item.className = "session-list-item";
+    const indicatorClass = server.connected ? "active" : "disconnected";
     item.innerHTML = `
       <div class="flex items-center space-x-2 flex-1">
-        <span class="session-indicator active"></span>
+        <span class="session-indicator ${indicatorClass}"></span>
         <span class="truncate">${server.name}</span>
       </div>
       <button class="session-delete-btn mcp-remove-btn" data-name="${server.name}" title="Remove server">×</button>
     `;
+
+    // Click to show details
+    item.addEventListener("click", async (e) => {
+      const target = e.target as HTMLElement;
+      if (!target.classList.contains("mcp-remove-btn")) {
+        await showMcpServerDetails(server.name);
+      }
+    });
 
     const removeBtn = item.querySelector(".mcp-remove-btn");
     removeBtn?.addEventListener("click", async (e) => {
@@ -517,6 +647,62 @@ function renderMcpServers() {
   });
 }
 
+async function showMcpServerDetails(name: string) {
+  const detailsModal = document.getElementById("mcp-details-modal");
+  const detailsTitle = document.getElementById("mcp-details-title");
+  const detailsContent = document.getElementById("mcp-details-content");
+
+  // Show modal immediately with loading state
+  if (detailsTitle) {
+    detailsTitle.textContent = name;
+  }
+
+  if (detailsContent) {
+    detailsContent.innerHTML = '<div class="flex items-center justify-center py-8"><span class="loading-spinner" style="width: 24px; height: 24px; border-width: 3px;"></span></div>';
+  }
+
+  detailsModal?.classList.remove("hidden");
+
+  try {
+    const details = await ipcRenderer.invoke("get-mcp-server-details", name);
+
+    if (detailsContent) {
+      let html = "";
+      if (details.scope) {
+        html += `<div><strong>Scope:</strong> ${details.scope}</div>`;
+      }
+      if (details.status) {
+        html += `<div><strong>Status:</strong> ${details.status}</div>`;
+      }
+      if (details.type) {
+        html += `<div><strong>Type:</strong> ${details.type}</div>`;
+      }
+      if (details.url) {
+        html += `<div><strong>URL:</strong> ${details.url}</div>`;
+      }
+      if (details.command) {
+        html += `<div><strong>Command:</strong> ${details.command}</div>`;
+      }
+      if (details.args) {
+        html += `<div><strong>Args:</strong> ${details.args}</div>`;
+      }
+
+      detailsContent.innerHTML = html;
+    }
+
+    // Store current server name for remove button
+    const removeMcpDetailsBtn = document.getElementById("remove-mcp-details") as HTMLButtonElement;
+    if (removeMcpDetailsBtn) {
+      removeMcpDetailsBtn.dataset.serverName = name;
+    }
+  } catch (error) {
+    console.error("Failed to get server details:", error);
+    if (detailsContent) {
+      detailsContent.innerHTML = `<div class="text-red-400">Failed to load server details</div>`;
+    }
+  }
+}
+
 // MCP Modal handling
 const mcpModal = document.getElementById("mcp-modal");
 const mcpNameInput = document.getElementById("mcp-name") as HTMLInputElement;
@@ -530,7 +716,7 @@ const mcpAlwaysAllowInput = document.getElementById("mcp-always-allow") as HTMLI
 const localFields = document.getElementById("local-fields");
 const remoteFields = document.getElementById("remote-fields");
 const cancelMcpBtn = document.getElementById("cancel-mcp");
-const addMcpBtn = document.getElementById("add-mcp");
+const addMcpBtn = document.getElementById("add-mcp") as HTMLButtonElement;
 
 // Toggle fields based on server type
 mcpTypeSelect?.addEventListener("change", () => {
@@ -632,6 +818,12 @@ addMcpBtn?.addEventListener("click", async () => {
     config.alwaysAllow = alwaysAllowInput.split(",").map(t => t.trim()).filter(t => t);
   }
 
+  // Show loading state
+  const originalText = addMcpBtn.textContent;
+  addMcpBtn.textContent = "Adding...";
+  addMcpBtn.disabled = true;
+  addMcpBtn.classList.add("opacity-50", "cursor-not-allowed");
+
   try {
     await ipcRenderer.invoke("add-mcp-server", name, config);
     await loadMcpServers();
@@ -639,7 +831,42 @@ addMcpBtn?.addEventListener("click", async () => {
   } catch (error) {
     console.error("Error adding server:", error);
     alert(`Failed to add server: ${error}`);
+  } finally {
+    // Reset button state
+    addMcpBtn.textContent = originalText;
+    addMcpBtn.disabled = false;
+    addMcpBtn.classList.remove("opacity-50", "cursor-not-allowed");
   }
+});
+
+// MCP Details Modal handling
+const closeMcpDetailsBtn = document.getElementById("close-mcp-details");
+const removeMcpDetailsBtn = document.getElementById("remove-mcp-details") as HTMLButtonElement;
+const mcpDetailsModal = document.getElementById("mcp-details-modal");
+
+closeMcpDetailsBtn?.addEventListener("click", () => {
+  mcpDetailsModal?.classList.add("hidden");
+});
+
+removeMcpDetailsBtn?.addEventListener("click", async () => {
+  const serverName = removeMcpDetailsBtn.dataset.serverName;
+  if (!serverName) return;
+
+  if (confirm(`Remove MCP server "${serverName}"?`)) {
+    try {
+      await ipcRenderer.invoke("remove-mcp-server", serverName);
+      mcpDetailsModal?.classList.add("hidden");
+      await loadMcpServers();
+    } catch (error) {
+      alert(`Failed to remove server: ${error}`);
+    }
+  }
+});
+
+// Listen for MCP server updates from main process
+ipcRenderer.on("mcp-servers-updated", (_event, servers: McpServer[]) => {
+  mcpServers = servers;
+  renderMcpServers();
 });
 
 // Load MCP servers on startup

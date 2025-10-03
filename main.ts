@@ -14,6 +14,7 @@ interface SessionConfig {
   projectDir: string;
   parentBranch: string;
   codingAgent: string;
+  skipPermissions: boolean;
 }
 
 interface PersistedSession {
@@ -120,6 +121,7 @@ ipcMain.handle("get-last-settings", () => {
     projectDir: "",
     parentBranch: "",
     codingAgent: "claude",
+    skipPermissions: true,
   });
 });
 
@@ -181,7 +183,8 @@ ipcMain.on("create-session", async (event, config: SessionConfig) => {
 
           // Auto-run the selected coding agent
           if (config.codingAgent === "claude") {
-            ptyProcess.write("claude\r");
+            const claudeCmd = config.skipPermissions ? "claude --dangerously-skip-permissions\r" : "claude\r";
+            ptyProcess.write(claudeCmd);
           } else if (config.codingAgent === "codex") {
             ptyProcess.write("codex\r");
           }
@@ -199,7 +202,8 @@ ipcMain.on("create-session", async (event, config: SessionConfig) => {
 
           // Auto-run the selected coding agent
           if (config.codingAgent === "claude") {
-            ptyProcess.write("claude\r");
+            const claudeCmd = config.skipPermissions ? "claude --dangerously-skip-permissions\r" : "claude\r";
+            ptyProcess.write(claudeCmd);
           } else if (config.codingAgent === "codex") {
             ptyProcess.write("codex\r");
           }
@@ -277,7 +281,8 @@ ipcMain.on("reopen-session", (event, sessionId: string) => {
         terminalReady = true;
 
         if (session.config.codingAgent === "claude") {
-          ptyProcess.write("claude\r");
+          const claudeCmd = session.config.skipPermissions ? "claude --dangerously-skip-permissions\r" : "claude\r";
+          ptyProcess.write(claudeCmd);
         } else if (session.config.codingAgent === "codex") {
           ptyProcess.write("codex\r");
         }
@@ -332,6 +337,17 @@ ipcMain.handle("get-all-sessions", () => {
   return getPersistedSessions();
 });
 
+// Rename session
+ipcMain.on("rename-session", (_event, sessionId: string, newName: string) => {
+  const sessions = getPersistedSessions();
+  const session = sessions.find(s => s.id === sessionId);
+
+  if (session) {
+    session.name = newName;
+    savePersistedSessions(sessions);
+  }
+});
+
 // MCP Server management functions
 async function listMcpServers() {
   try {
@@ -355,12 +371,18 @@ async function listMcpServers() {
       }
 
       // Parse format: "name: url (type) - status" or just "name"
-      // Extract just the server name (before the colon)
+      // Extract server name (before the colon) and status
       const colonIndex = line.indexOf(":");
       const serverName = colonIndex > 0 ? line.substring(0, colonIndex).trim() : line.trim();
 
+      // Check if server is connected (✓ Connected or similar)
+      const isConnected = line.includes("✓") || line.includes("Connected");
+
       if (serverName) {
-        servers.push({ name: serverName });
+        servers.push({
+          name: serverName,
+          connected: isConnected
+        });
       }
     }
 
@@ -374,11 +396,43 @@ async function listMcpServers() {
 async function addMcpServer(name: string, config: any) {
   // Use add-json to support full configuration including env vars, headers, etc.
   const jsonConfig = JSON.stringify(config);
-  await execAsync(`claude mcp add-json "${name}" '${jsonConfig}'`);
+  await execAsync(`claude mcp add-json --scope user "${name}" '${jsonConfig}'`);
 }
 
 async function removeMcpServer(name: string) {
   await execAsync(`claude mcp remove "${name}"`);
+}
+
+async function getMcpServerDetails(name: string) {
+  try {
+    const { stdout } = await execAsync(`claude mcp get "${name}"`);
+
+    // Parse the output to extract details
+    const details: any = { name };
+    const lines = stdout.split("\n");
+
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (trimmed.includes("Scope:")) {
+        details.scope = trimmed.replace("Scope:", "").trim();
+      } else if (trimmed.includes("Status:")) {
+        details.status = trimmed.replace("Status:", "").trim();
+      } else if (trimmed.includes("Type:")) {
+        details.type = trimmed.replace("Type:", "").trim();
+      } else if (trimmed.includes("URL:")) {
+        details.url = trimmed.replace("URL:", "").trim();
+      } else if (trimmed.includes("Command:")) {
+        details.command = trimmed.replace("Command:", "").trim();
+      } else if (trimmed.includes("Args:")) {
+        details.args = trimmed.replace("Args:", "").trim();
+      }
+    }
+
+    return details;
+  } catch (error) {
+    console.error("Error getting MCP server details:", error);
+    throw error;
+  }
 }
 
 ipcMain.handle("list-mcp-servers", async () => {
@@ -408,6 +462,15 @@ ipcMain.handle("remove-mcp-server", async (_event, name: string) => {
   }
 });
 
+ipcMain.handle("get-mcp-server-details", async (_event, name: string) => {
+  try {
+    return await getMcpServerDetails(name);
+  } catch (error) {
+    console.error("Error getting MCP server details:", error);
+    throw error;
+  }
+});
+
 const createWindow = () => {
   mainWindow = new BrowserWindow({
     width: 1400,
@@ -429,6 +492,14 @@ const createWindow = () => {
 
 app.whenReady().then(() => {
   createWindow();
+
+  // Refresh MCP server list every minute and broadcast to all windows
+  setInterval(async () => {
+    const servers = await listMcpServers();
+    BrowserWindow.getAllWindows().forEach(window => {
+      window.webContents.send("mcp-servers-updated", servers);
+    });
+  }, 60000); // 60000ms = 1 minute
 
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) {

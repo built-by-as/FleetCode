@@ -36,6 +36,17 @@
     @apply text-gray-400 hover:text-white hover:bg-gray-700 text-sm w-5 h-5 flex items-center justify-center rounded transition-all;
   }
 
+  .loading-spinner {
+    @apply inline-block w-3 h-3 border-2 border-gray-400 border-t-transparent rounded-full;
+    animation: spin 0.6s linear infinite;
+  }
+
+  @keyframes spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+
   /* Session List Item */
   .session-list-item {
     @apply px-3 py-2 rounded cursor-pointer hover:bg-gray-700 text-gray-300 text-sm flex items-center justify-between;
@@ -54,6 +65,10 @@
     @apply bg-green-500;
   }
 
+  .session-indicator.disconnected {
+    @apply bg-red-500;
+  }
+
   .session-delete-btn {
     @apply text-gray-500 hover:text-red-500;
     opacity: 0;
@@ -62,6 +77,19 @@
 
   .session-list-item:hover .session-delete-btn {
     opacity: 1;
+  }
+
+  .session-name-text {
+    cursor: pointer;
+  }
+
+  .session-name-text:hover {
+    @apply text-gray-100;
+  }
+
+  .session-name-input {
+    @apply bg-gray-700 border border-gray-600 rounded px-1 py-0 text-gray-100 text-sm focus:outline-none focus:border-blue-500;
+    min-width: 80px;
   }
 
   /* Tabs */
@@ -134,8 +162,16 @@
     @apply w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white focus:outline-none focus:border-blue-500;
   }
 
+  .form-checkbox {
+    @apply w-4 h-4 rounded border-gray-600 bg-gray-700 text-blue-600 focus:ring-blue-500 focus:ring-2 cursor-pointer;
+  }
+
   .btn-secondary {
     @apply bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded text-sm font-medium transition;
+  }
+
+  .btn-danger {
+    @apply bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded text-sm font-medium transition;
   }
 
   .btn-group {
