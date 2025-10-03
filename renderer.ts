@@ -579,6 +579,13 @@ function switchToSession(sessionId: string) {
     // Clear unread status when switching to this session
     clearUnreadStatus(sessionId);
 
+    // Clear any pending idle timer for this session (Bug 1 fix)
+    const existingTimer = sessionIdleTimers.get(sessionId);
+    if (existingTimer) {
+      clearTimeout(existingTimer);
+      sessionIdleTimers.delete(sessionId);
+    }
+
     // Focus and resize
     session.terminal.focus();
     setTimeout(() => {
@@ -624,6 +631,13 @@ function closeSession(sessionId: string) {
   // Update UI indicator
   updateSessionState(sessionId, false);
 
+  // Clean up idle timer (Bug 2 fix)
+  const existingTimer = sessionIdleTimers.get(sessionId);
+  if (existingTimer) {
+    clearTimeout(existingTimer);
+    sessionIdleTimers.delete(sessionId);
+  }
+
   // Close PTY in main process
   ipcRenderer.send("close-session", sessionId);
 
@@ -660,6 +674,13 @@ function deleteSession(sessionId: string) {
   // Remove from sessions map
   sessions.delete(sessionId);
 
+  // Clean up idle timer (Bug 2 fix)
+  const existingTimer = sessionIdleTimers.get(sessionId);
+  if (existingTimer) {
+    clearTimeout(existingTimer);
+    sessionIdleTimers.delete(sessionId);
+  }
+
   // Delete in main process (handles worktree removal)
   ipcRenderer.send("delete-session", sessionId);
 
@@ -690,19 +711,27 @@ ipcRenderer.on("session-output", (_event, sessionId: string, data: string) => {
 
     // Only mark as unread if this is not the active session
     if (activeSessionId !== sessionId && session.hasActivePty && !session.hasUnreadActivity) {
-      // Clear any existing idle timer
-      const existingTimer = sessionIdleTimers.get(sessionId);
-      if (existingTimer) {
-        clearTimeout(existingTimer);
+      // Only track substantive output (ignore cursor movements, keepalives, etc)
+      // Look for actual text content or common escape sequences that indicate real output
+      const hasSubstantiveOutput = /[a-zA-Z0-9]/.test(filteredData) ||
+                                    filteredData.includes('\n') ||
+                                    filteredData.includes('\r');
+
+      if (hasSubstantiveOutput) {
+        // Clear any existing idle timer
+        const existingTimer = sessionIdleTimers.get(sessionId);
+        if (existingTimer) {
+          clearTimeout(existingTimer);
+        }
+
+        // Set a new timer - if no output for IDLE_DELAY_MS, mark as unread
+        const timer = setTimeout(() => {
+          markSessionAsUnread(sessionId);
+          sessionIdleTimers.delete(sessionId);
+        }, IDLE_DELAY_MS);
+
+        sessionIdleTimers.set(sessionId, timer);
       }
-
-      // Set a new timer - if no output for IDLE_DELAY_MS, mark as unread
-      const timer = setTimeout(() => {
-        markSessionAsUnread(sessionId);
-        sessionIdleTimers.delete(sessionId);
-      }, IDLE_DELAY_MS);
-
-      sessionIdleTimers.set(sessionId, timer);
     }
   }
 });
