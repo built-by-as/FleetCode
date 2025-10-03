@@ -13,7 +13,10 @@
     "dist": "npm run build && electron-builder",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
-  "author": "built-by-as",
+  "author": {
+    "name": "built-by-as",
+    "email": "hello@example.com"
+  },
   "license": "ISC",
   "devDependencies": {
     "@electron/rebuild": "^4.0.1",
