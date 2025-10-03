@@ -15,6 +15,7 @@ interface SessionConfig {
   parentBranch: string;
   codingAgent: string;
   skipPermissions: boolean;
+  setupCommands?: string[];
 }
 
 interface PersistedSession {
@@ -225,6 +226,13 @@ ipcMain.on("create-session", async (event, config: SessionConfig) => {
         if (dataBuffer.includes("\x1b[?2004h")) {
           terminalReady = true;
 
+          // Run setup commands if provided
+          if (config.setupCommands && config.setupCommands.length > 0) {
+            config.setupCommands.forEach(cmd => {
+              ptyProcess.write(cmd + "\r");
+            });
+          }
+
           // Auto-run the selected coding agent
           if (config.codingAgent === "claude") {
             const claudeCmd = config.skipPermissions ? "claude --dangerously-skip-permissions\r" : "claude\r";
@@ -243,6 +251,13 @@ ipcMain.on("create-session", async (event, config: SessionConfig) => {
             dataBuffer.endsWith(">") || dataBuffer.endsWith("➜") ||
             dataBuffer.endsWith("✗") || dataBuffer.endsWith("✓")) {
           terminalReady = true;
+
+          // Run setup commands if provided
+          if (config.setupCommands && config.setupCommands.length > 0) {
+            config.setupCommands.forEach(cmd => {
+              ptyProcess.write(cmd + "\r");
+            });
+          }
 
           // Auto-run the selected coding agent
           if (config.codingAgent === "claude") {
@@ -326,6 +341,13 @@ ipcMain.on("reopen-session", (event, sessionId: string) => {
           dataBuffer.includes("➜ ") || dataBuffer.includes("✗ ") ||
           dataBuffer.includes("✓ ")) {
         terminalReady = true;
+
+        // Run setup commands if provided
+        if (session.config.setupCommands && session.config.setupCommands.length > 0) {
+          session.config.setupCommands.forEach(cmd => {
+            ptyProcess.write(cmd + "\r");
+          });
+        }
 
         if (session.config.codingAgent === "claude") {
           const claudeCmd = session.config.skipPermissions ? "claude --dangerously-skip-permissions\r" : "claude\r";

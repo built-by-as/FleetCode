@@ -7,6 +7,7 @@ interface SessionConfig {
   parentBranch: string;
   codingAgent: string;
   skipPermissions: boolean;
+  setupCommands?: string[];
 }
 
 interface PersistedSession {
@@ -806,6 +807,12 @@ document.getElementById("new-session")?.addEventListener("click", async () => {
     skipPermissionsCheckbox.checked = lastSettings.skipPermissions;
   }
 
+  // Set last used setup commands
+  const setupCommandsTextarea = document.getElementById("setup-commands") as HTMLTextAreaElement;
+  if (lastSettings.setupCommands && setupCommandsTextarea) {
+    setupCommandsTextarea.value = lastSettings.setupCommands.join("\n");
+  }
+
   // Show/hide skip permissions based on coding agent
   if (lastSettings.codingAgent === "codex") {
     skipPermissionsGroup?.classList.add("hidden");
@@ -853,11 +860,18 @@ createBtn?.addEventListener("click", () => {
     return;
   }
 
+  const setupCommandsTextarea = document.getElementById("setup-commands") as HTMLTextAreaElement;
+  const setupCommandsText = setupCommandsTextarea?.value.trim();
+  const setupCommands = setupCommandsText
+    ? setupCommandsText.split("\n").filter(cmd => cmd.trim())
+    : undefined;
+
   const config: SessionConfig = {
     projectDir: selectedDirectory,
     parentBranch: parentBranchSelect.value,
     codingAgent: codingAgentSelect.value,
     skipPermissions: codingAgentSelect.value === "claude" ? skipPermissionsCheckbox.checked : false,
+    setupCommands,
   };
 
   // Save settings for next time
@@ -872,6 +886,9 @@ createBtn?.addEventListener("click", () => {
   selectedDirectory = "";
   parentBranchSelect.innerHTML = '<option value="">Loading branches...</option>';
   codingAgentSelect.value = "claude";
+  if (setupCommandsTextarea) {
+    setupCommandsTextarea.value = "";
+  }
 });
 
 // MCP Server management functions
