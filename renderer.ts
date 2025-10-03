@@ -76,18 +76,58 @@ function createTerminalUI(sessionId: string) {
 
   // Listen for bell character to mark unread activity
   term.onBell(() => {
-    console.log(`Bell received for session ${sessionId}, activeSessionId: ${activeSessionId}`);
     if (activeSessionId !== sessionId) {
-      console.log(`Marking session ${sessionId} as unread`);
       markSessionAsUnread(sessionId);
     }
   });
 
-  // Handle resize
+  // Handle resize - only refit if dimensions actually changed
+  let lastCols = term.cols;
+  let lastRows = term.rows;
+  let resizeTimeout: NodeJS.Timeout | null = null;
+
   const resizeHandler = () => {
     if (activeSessionId === sessionId) {
-      fitAddon.fit();
-      ipcRenderer.send("session-resize", sessionId, term.cols, term.rows);
+      // Clear any pending resize
+      if (resizeTimeout) {
+        clearTimeout(resizeTimeout);
+      }
+
+      // Debounce the fit call
+      resizeTimeout = setTimeout(() => {
+        // Calculate what the new dimensions would be
+        const container = sessionElement;
+        if (!container) return;
+
+        const rect = container.getBoundingClientRect();
+        const core = (term as any)._core;
+        if (!core) return;
+
+        // Estimate new dimensions based on container size
+        const newCols = Math.floor(rect.width / core._renderService.dimensions.actualCellWidth);
+        const newRows = Math.floor(rect.height / core._renderService.dimensions.actualCellHeight);
+
+        // Only fit if dimensions actually changed significantly (more than 1 char difference)
+        if (Math.abs(newCols - lastCols) > 1 || Math.abs(newRows - lastRows) > 1) {
+          // Save scroll position before fitting
+          const wasAtBottom = term.buffer.active.viewportY === term.buffer.active.baseY;
+          const savedScrollPosition = term.buffer.active.viewportY;
+
+          fitAddon.fit();
+
+          lastCols = term.cols;
+          lastRows = term.rows;
+
+          // Restore scroll position unless we were at the bottom (in which case stay at bottom)
+          if (!wasAtBottom && savedScrollPosition !== term.buffer.active.viewportY) {
+            term.scrollToLine(savedScrollPosition);
+          }
+
+          ipcRenderer.send("session-resize", sessionId, term.cols, term.rows);
+        }
+
+        resizeTimeout = null;
+      }, 100); // 100ms debounce
     }
   };
   window.addEventListener("resize", resizeHandler);
@@ -375,7 +415,17 @@ function switchToSession(sessionId: string) {
     session.terminal.focus();
     setTimeout(() => {
       if (session.fitAddon && session.terminal) {
+        // Save scroll position before fitting
+        const wasAtBottom = session.terminal.buffer.active.viewportY === session.terminal.buffer.active.baseY;
+        const savedScrollPosition = session.terminal.buffer.active.viewportY;
+
         session.fitAddon.fit();
+
+        // Restore scroll position unless we were at the bottom
+        if (!wasAtBottom && savedScrollPosition !== session.terminal.buffer.active.viewportY) {
+          session.terminal.scrollToLine(savedScrollPosition);
+        }
+
         ipcRenderer.send("session-resize", sessionId, session.terminal.cols, session.terminal.rows);
       }
     }, 0);
@@ -464,28 +514,27 @@ const IDLE_DELAY_MS = 500; // 0.5 seconds of no output = Claude is done
 ipcRenderer.on("session-output", (_event, sessionId: string, data: string) => {
   const session = sessions.get(sessionId);
   if (session && session.terminal) {
-    session.terminal.write(data);
+    // Filter out [3J (clear scrollback) to prevent viewport resets during interactive menus
+    // Keep [2J (clear screen) which is needed for the menu redraw
+    const filteredData = data.replace(/\x1b\[3J/g, '');
+
+    session.terminal.write(filteredData);
 
     // Only mark as unread if this is not the active session
     if (activeSessionId !== sessionId && session.hasActivePty) {
-      console.log(`[Unread] Session ${sessionId} received output while inactive`);
-
       // Clear any existing idle timer
       const existingTimer = sessionIdleTimers.get(sessionId);
       if (existingTimer) {
-        console.log(`[Unread] Clearing existing idle timer for session ${sessionId}`);
         clearTimeout(existingTimer);
       }
 
       // Set a new timer - if no output for IDLE_DELAY_MS, mark as unread
       const timer = setTimeout(() => {
-        console.log(`[Unread] ✓ No output for ${IDLE_DELAY_MS}ms - Claude is done! Marking session ${sessionId} as unread`);
         markSessionAsUnread(sessionId);
         sessionIdleTimers.delete(sessionId);
       }, IDLE_DELAY_MS);
 
       sessionIdleTimers.set(sessionId, timer);
-      console.log(`[Unread] Set idle timer for session ${sessionId} - will trigger in ${IDLE_DELAY_MS}ms if no more output`);
     }
   }
 });

@@ -46,6 +46,44 @@ function getNextSessionNumber(): number {
 }
 
 // Git worktree helper functions
+async function ensureFleetcodeExcluded(projectDir: string) {
+  // Check if we've already initialized this project (persisted across app restarts)
+  const initializedProjects: string[] = (store as any).get("excludeInitializedProjects", []);
+  if (initializedProjects.includes(projectDir)) {
+    return;
+  }
+
+  const excludeFilePath = path.join(projectDir, ".git", "info", "exclude");
+  const excludeEntry = ".fleetcode/";
+
+  try {
+    // Ensure .git/info directory exists
+    const infoDir = path.dirname(excludeFilePath);
+    if (!fs.existsSync(infoDir)) {
+      fs.mkdirSync(infoDir, { recursive: true });
+    }
+
+    // Read existing exclude file or create empty string
+    let excludeContent = "";
+    if (fs.existsSync(excludeFilePath)) {
+      excludeContent = fs.readFileSync(excludeFilePath, "utf-8");
+    }
+
+    // Check if .fleetcode/ is already excluded
+    if (!excludeContent.includes(excludeEntry)) {
+      // Add .fleetcode/ to exclude file
+      const newContent = excludeContent.trim() + (excludeContent.trim() ? "\n" : "") + excludeEntry + "\n";
+      fs.writeFileSync(excludeFilePath, newContent, "utf-8");
+    }
+
+    // Mark this project as initialized and persist
+    initializedProjects.push(projectDir);
+    (store as any).set("excludeInitializedProjects", initializedProjects);
+  } catch (error) {
+    console.error("Error ensuring .fleetcode excluded:", error);
+  }
+}
+
 async function createWorktree(projectDir: string, parentBranch: string, sessionNumber: number): Promise<string> {
   const git = simpleGit(projectDir);
   const fleetcodeDir = path.join(projectDir, ".fleetcode");
@@ -136,6 +174,9 @@ ipcMain.on("create-session", async (event, config: SessionConfig) => {
     const sessionNumber = getNextSessionNumber();
     const sessionId = `session-${Date.now()}`;
     const sessionName = `Session ${sessionNumber}`;
+
+    // Ensure .fleetcode is excluded (async, don't wait)
+    ensureFleetcodeExcluded(config.projectDir);
 
     // Create git worktree
     const worktreePath = await createWorktree(config.projectDir, config.parentBranch, sessionNumber);
