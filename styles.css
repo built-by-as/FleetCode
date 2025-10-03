@@ -85,4 +85,57 @@
   .session-wrapper.active {
     @apply block;
   }
+
+  /* Modal */
+  .modal-overlay {
+    @apply fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50;
+  }
+
+  .modal-overlay.hidden {
+    display: none;
+  }
+
+  .modal {
+    @apply bg-gray-800 rounded-lg shadow-xl w-full max-w-md p-6;
+  }
+
+  .modal-title {
+    @apply text-xl font-semibold text-white mb-4;
+  }
+
+  .form-group {
+    @apply mb-4;
+  }
+
+  .form-label {
+    @apply block text-sm font-medium text-gray-300 mb-2;
+  }
+
+  .form-input {
+    @apply w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white focus:outline-none focus:border-blue-500;
+  }
+
+  .form-select {
+    @apply w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white focus:outline-none focus:border-blue-500;
+  }
+
+  .btn-secondary {
+    @apply bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded text-sm font-medium transition;
+  }
+
+  .btn-group {
+    @apply flex justify-end space-x-3 mt-6;
+  }
+
+  .directory-input-group {
+    @apply flex space-x-2;
+  }
+
+  .directory-input-group .form-input {
+    @apply flex-1;
+  }
+
+  .btn-icon {
+    @apply bg-gray-600 hover:bg-gray-700 text-white px-3 py-2 rounded text-sm font-medium transition;
+  }
 }

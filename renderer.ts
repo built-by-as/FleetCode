@@ -2,18 +2,25 @@ import { ipcRenderer } from "electron";
 import { Terminal } from "xterm";
 import { FitAddon } from "xterm-addon-fit";
 
+interface SessionConfig {
+  projectDir: string;
+  parentBranch: string;
+  codingAgent: string;
+}
+
 interface Session {
   id: string;
   terminal: Terminal;
   fitAddon: FitAddon;
   element: HTMLDivElement;
   name: string;
+  config: SessionConfig;
 }
 
 const sessions = new Map<string, Session>();
 let activeSessionId: string | null = null;
 
-function createSession(sessionId: string, name: string) {
+function createSession(sessionId: string, name: string, config: SessionConfig) {
   const term = new Terminal({
     cursorBlink: true,
     fontSize: 14,
@@ -49,6 +56,7 @@ function createSession(sessionId: string, name: string) {
     fitAddon,
     element: sessionElement,
     name,
+    config,
   };
 
   sessions.set(sessionId, session);
@@ -189,12 +197,78 @@ ipcRenderer.on("session-output", (_event, sessionId: string, data: string) => {
 });
 
 // Handle session created
-ipcRenderer.on("session-created", (_event, sessionId: string) => {
+ipcRenderer.on("session-created", (_event, sessionId: string, config: SessionConfig) => {
   const name = `Session ${sessions.size + 1}`;
-  createSession(sessionId, name);
+  createSession(sessionId, name, config);
 });
 
-// New session button
+// Modal handling
+const modal = document.getElementById("config-modal");
+const projectDirInput = document.getElementById("project-dir") as HTMLInputElement;
+const parentBranchSelect = document.getElementById("parent-branch") as HTMLSelectElement;
+const codingAgentSelect = document.getElementById("coding-agent") as HTMLSelectElement;
+const browseDirBtn = document.getElementById("browse-dir");
+const cancelBtn = document.getElementById("cancel-session");
+const createBtn = document.getElementById("create-session");
+
+let selectedDirectory = "";
+
+// New session button - opens modal
 document.getElementById("new-session")?.addEventListener("click", () => {
-  ipcRenderer.send("create-session");
+  modal?.classList.remove("hidden");
+});
+
+// Browse directory
+browseDirBtn?.addEventListener("click", async () => {
+  const dir = await ipcRenderer.invoke("select-directory");
+  if (dir) {
+    selectedDirectory = dir;
+    projectDirInput.value = dir;
+
+    // Load git branches
+    const branches = await ipcRenderer.invoke("get-branches", dir);
+    parentBranchSelect.innerHTML = "";
+
+    if (branches.length === 0) {
+      parentBranchSelect.innerHTML = '<option value="">No git repository found</option>';
+    } else {
+      branches.forEach((branch: string) => {
+        const option = document.createElement("option");
+        option.value = branch;
+        option.textContent = branch;
+        parentBranchSelect.appendChild(option);
+      });
+    }
+  }
+});
+
+// Cancel button
+cancelBtn?.addEventListener("click", () => {
+  modal?.classList.add("hidden");
+  projectDirInput.value = "";
+  selectedDirectory = "";
+  parentBranchSelect.innerHTML = '<option value="">Loading branches...</option>';
+});
+
+// Create session button
+createBtn?.addEventListener("click", () => {
+  if (!selectedDirectory) {
+    alert("Please select a project directory");
+    return;
+  }
+
+  const config: SessionConfig = {
+    projectDir: selectedDirectory,
+    parentBranch: parentBranchSelect.value,
+    codingAgent: codingAgentSelect.value,
+  };
+
+  ipcRenderer.send("create-session", config);
+  modal?.classList.add("hidden");
+
+  // Reset form
+  projectDirInput.value = "";
+  selectedDirectory = "";
+  parentBranchSelect.innerHTML = '<option value="">Loading branches...</option>';
+  codingAgentSelect.value = "claude";
 });

@@ -45,6 +45,41 @@
       </div>
     </div>
 
+    <!-- Session Configuration Modal -->
+    <div id="config-modal" class="modal-overlay hidden">
+      <div class="modal">
+        <h2 class="modal-title">New Session Configuration</h2>
+
+        <div class="form-group">
+          <label class="form-label">Project Directory</label>
+          <div class="directory-input-group">
+            <input type="text" id="project-dir" class="form-input" readonly placeholder="Select a directory..." />
+            <button id="browse-dir" class="btn-icon">Browse</button>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Parent Branch</label>
+          <select id="parent-branch" class="form-select">
+            <option value="">Loading branches...</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Coding Agent</label>
+          <select id="coding-agent" class="form-select">
+            <option value="claude">Claude</option>
+            <option value="codex">Codex</option>
+          </select>
+        </div>
+
+        <div class="btn-group">
+          <button id="cancel-session" class="btn-secondary">Cancel</button>
+          <button id="create-session" class="btn-primary">Create Session</button>
+        </div>
+      </div>
+    </div>
+
     <script>
       require('./dist/renderer.js');
     </script>

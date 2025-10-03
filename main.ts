@@ -1,12 +1,46 @@
-import { app, BrowserWindow, ipcMain } from "electron";
+import { app, BrowserWindow, ipcMain, dialog } from "electron";
 import * as pty from "node-pty";
 import * as os from "os";
+import { simpleGit } from "simple-git";
+import Store from "electron-store";
+
+interface SessionConfig {
+  projectDir: string;
+  parentBranch: string;
+  codingAgent: string;
+}
 
 let mainWindow: BrowserWindow;
 const sessions = new Map<string, pty.IPty>();
+const store = new Store();
+
+// Open directory picker
+ipcMain.handle("select-directory", async () => {
+  const result = await dialog.showOpenDialog(mainWindow, {
+    properties: ["openDirectory"],
+  });
+
+  if (result.canceled || result.filePaths.length === 0) {
+    return null;
+  }
+
+  return result.filePaths[0];
+});
+
+// Get git branches from directory
+ipcMain.handle("get-branches", async (_event, dirPath: string) => {
+  try {
+    const git = simpleGit(dirPath);
+    const branchSummary = await git.branch();
+    return branchSummary.all;
+  } catch (error) {
+    console.error("Error getting branches:", error);
+    return [];
+  }
+});
 
 // Create new session
-ipcMain.on("create-session", (event) => {
+ipcMain.on("create-session", (event, config: SessionConfig) => {
   const sessionId = `session-${Date.now()}`;
   const shell = os.platform() === "darwin" ? "zsh" : "bash";
 
@@ -14,7 +48,7 @@ ipcMain.on("create-session", (event) => {
     name: "xterm-color",
     cols: 80,
     rows: 30,
-    cwd: process.env.HOME,
+    cwd: config.projectDir || process.env.HOME,
     env: process.env,
   });
 
@@ -24,7 +58,7 @@ ipcMain.on("create-session", (event) => {
     mainWindow.webContents.send("session-output", sessionId, data);
   });
 
-  event.reply("session-created", sessionId);
+  event.reply("session-created", sessionId, config);
 });
 
 // Handle session input
