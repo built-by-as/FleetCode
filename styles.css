@@ -9,11 +9,15 @@
   }
 
   .sidebar-header {
-    @apply p-4 border-b border-gray-700;
+    @apply p-4 border-b border-gray-700 flex items-center justify-between;
   }
 
   .sidebar-title {
     @apply text-white font-semibold text-lg;
+  }
+
+  .settings-btn {
+    @apply text-gray-400 hover:text-white hover:bg-gray-700 text-lg w-8 h-8 flex items-center justify-center rounded transition-all;
   }
 
   .sidebar-content {
@@ -175,6 +179,10 @@
 
   .form-checkbox {
     @apply w-4 h-4 rounded border-gray-600 bg-gray-700 text-blue-600 focus:ring-blue-500 focus:ring-2 cursor-pointer;
+  }
+
+  .color-input {
+    @apply bg-gray-700 border border-gray-600 rounded px-2 py-1 h-10 w-20 cursor-pointer;
   }
 
   .btn-secondary {

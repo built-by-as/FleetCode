@@ -212,7 +212,10 @@ ipcMain.on("create-session", async (event, config: SessionConfig) => {
     let dataBuffer = "";
 
     ptyProcess.onData((data) => {
-      mainWindow.webContents.send("session-output", sessionId, data);
+      // Only send data if window still exists and is not destroyed
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send("session-output", sessionId, data);
+      }
 
       // Detect when terminal is ready
       if (!terminalReady) {
@@ -309,7 +312,10 @@ ipcMain.on("reopen-session", (event, sessionId: string) => {
   let dataBuffer = "";
 
   ptyProcess.onData((data) => {
-    mainWindow.webContents.send("session-output", sessionId, data);
+    // Only send data if window still exists and is not destroyed
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send("session-output", sessionId, data);
+    }
 
     // Detect when terminal is ready and auto-run agent
     if (!terminalReady) {
@@ -387,6 +393,15 @@ ipcMain.on("rename-session", (_event, sessionId: string, newName: string) => {
     session.name = newName;
     savePersistedSessions(sessions);
   }
+});
+
+// Terminal settings handlers
+ipcMain.handle("get-terminal-settings", () => {
+  return (store as any).get("terminalSettings");
+});
+
+ipcMain.handle("save-terminal-settings", (_event, settings: any) => {
+  (store as any).set("terminalSettings", settings);
 });
 
 // MCP Server management functions
@@ -528,6 +543,19 @@ const createWindow = () => {
   mainWindow.webContents.on("did-finish-load", () => {
     const sessions = getPersistedSessions();
     mainWindow.webContents.send("load-persisted-sessions", sessions);
+  });
+
+  // Clean up PTY processes when window is closed
+  mainWindow.on("closed", () => {
+    // Kill all active PTY processes
+    activePtyProcesses.forEach((ptyProcess, sessionId) => {
+      try {
+        ptyProcess.kill();
+      } catch (error) {
+        console.error(`Error killing PTY for session ${sessionId}:`, error);
+      }
+    });
+    activePtyProcesses.clear();
   });
 };
 

@@ -19,6 +19,7 @@
       <div class="sidebar">
         <div class="sidebar-header">
           <h1 class="sidebar-title">FleetCode</h1>
+          <button id="open-settings" class="settings-btn" title="Settings">⚙️</button>
         </div>
 
         <div class="sidebar-content">
@@ -165,6 +166,57 @@
         <div class="btn-group">
           <button id="cancel-mcp" class="btn-secondary">Cancel</button>
           <button id="add-mcp" class="btn-primary">Add Server</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Settings Modal -->
+    <div id="settings-modal" class="modal-overlay hidden">
+      <div class="modal">
+        <h2 class="modal-title">Terminal Settings</h2>
+
+        <div class="form-group">
+          <label class="form-label">Theme</label>
+          <select id="settings-theme" class="form-select">
+            <option value="macos-light">macOS Terminal (Light)</option>
+            <option value="macos-dark">macOS Terminal (Dark)</option>
+            <option value="solarized-dark">Solarized Dark</option>
+            <option value="dracula">Dracula</option>
+            <option value="one-dark">One Dark</option>
+            <option value="github-dark">GitHub Dark</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Font Family</label>
+          <select id="settings-font-family" class="form-select">
+            <option value="Menlo, Monaco, 'Courier New', monospace">Menlo</option>
+            <option value="'SF Mono', Monaco, 'Courier New', monospace">SF Mono</option>
+            <option value="Monaco, 'Courier New', monospace">Monaco</option>
+            <option value="'Courier New', Courier, monospace">Courier New</option>
+            <option value="'Source Code Pro', monospace">Source Code Pro</option>
+            <option value="'Fira Code', monospace">Fira Code</option>
+            <option value="'JetBrains Mono', monospace">JetBrains Mono</option>
+            <option value="Consolas, monospace">Consolas</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Font Size</label>
+          <input type="number" id="settings-font-size" class="form-input" min="8" max="32" placeholder="11" />
+        </div>
+
+        <div class="form-group">
+          <label class="flex items-center space-x-2 cursor-pointer">
+            <input type="checkbox" id="settings-cursor-blink" class="form-checkbox" />
+            <span class="text-sm text-gray-300">Cursor Blink</span>
+          </label>
+        </div>
+
+        <div class="btn-group">
+          <button id="cancel-settings" class="btn-secondary">Cancel</button>
+          <button id="reset-settings" class="btn-secondary">Reset to Default</button>
+          <button id="save-settings" class="btn-primary">Save</button>
         </div>
       </div>
     </div>

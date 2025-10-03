@@ -40,19 +40,199 @@ interface McpServer {
   type?: "stdio" | "sse";
 }
 
+interface TerminalSettings {
+  fontFamily: string;
+  fontSize: number;
+  theme: string; // Theme preset name
+  cursorBlink: boolean;
+}
+
+interface ThemeColors {
+  background: string;
+  foreground: string;
+  cursor?: string;
+  cursorAccent?: string;
+  selection?: string;
+  black?: string;
+  red?: string;
+  green?: string;
+  yellow?: string;
+  blue?: string;
+  magenta?: string;
+  cyan?: string;
+  white?: string;
+  brightBlack?: string;
+  brightRed?: string;
+  brightGreen?: string;
+  brightYellow?: string;
+  brightBlue?: string;
+  brightMagenta?: string;
+  brightCyan?: string;
+  brightWhite?: string;
+}
+
+// Theme presets
+const THEME_PRESETS: Record<string, ThemeColors> = {
+  "macos-light": {
+    background: "#ffffff",
+    foreground: "#000000",
+    cursor: "#000000",
+    selection: "#b4d5fe",
+    black: "#000000",
+    red: "#c23621",
+    green: "#25bc24",
+    yellow: "#adad27",
+    blue: "#492ee1",
+    magenta: "#d338d3",
+    cyan: "#33bbc8",
+    white: "#cbcccd",
+    brightBlack: "#818383",
+    brightRed: "#fc391f",
+    brightGreen: "#31e722",
+    brightYellow: "#eaec23",
+    brightBlue: "#5833ff",
+    brightMagenta: "#f935f8",
+    brightCyan: "#14f0f0",
+    brightWhite: "#e9ebeb",
+  },
+  "macos-dark": {
+    background: "#000000",
+    foreground: "#ffffff",
+    cursor: "#ffffff",
+    selection: "#4d4d4d",
+    black: "#000000",
+    red: "#c23621",
+    green: "#25bc24",
+    yellow: "#adad27",
+    blue: "#492ee1",
+    magenta: "#d338d3",
+    cyan: "#33bbc8",
+    white: "#cbcccd",
+    brightBlack: "#818383",
+    brightRed: "#fc391f",
+    brightGreen: "#31e722",
+    brightYellow: "#eaec23",
+    brightBlue: "#5833ff",
+    brightMagenta: "#f935f8",
+    brightCyan: "#14f0f0",
+    brightWhite: "#e9ebeb",
+  },
+  "solarized-dark": {
+    background: "#002b36",
+    foreground: "#839496",
+    cursor: "#839496",
+    selection: "#073642",
+    black: "#073642",
+    red: "#dc322f",
+    green: "#859900",
+    yellow: "#b58900",
+    blue: "#268bd2",
+    magenta: "#d33682",
+    cyan: "#2aa198",
+    white: "#eee8d5",
+    brightBlack: "#002b36",
+    brightRed: "#cb4b16",
+    brightGreen: "#586e75",
+    brightYellow: "#657b83",
+    brightBlue: "#839496",
+    brightMagenta: "#6c71c4",
+    brightCyan: "#93a1a1",
+    brightWhite: "#fdf6e3",
+  },
+  "dracula": {
+    background: "#282a36",
+    foreground: "#f8f8f2",
+    cursor: "#f8f8f2",
+    selection: "#44475a",
+    black: "#21222c",
+    red: "#ff5555",
+    green: "#50fa7b",
+    yellow: "#f1fa8c",
+    blue: "#bd93f9",
+    magenta: "#ff79c6",
+    cyan: "#8be9fd",
+    white: "#f8f8f2",
+    brightBlack: "#6272a4",
+    brightRed: "#ff6e6e",
+    brightGreen: "#69ff94",
+    brightYellow: "#ffffa5",
+    brightBlue: "#d6acff",
+    brightMagenta: "#ff92df",
+    brightCyan: "#a4ffff",
+    brightWhite: "#ffffff",
+  },
+  "one-dark": {
+    background: "#282c34",
+    foreground: "#abb2bf",
+    cursor: "#528bff",
+    selection: "#3e4451",
+    black: "#282c34",
+    red: "#e06c75",
+    green: "#98c379",
+    yellow: "#e5c07b",
+    blue: "#61afef",
+    magenta: "#c678dd",
+    cyan: "#56b6c2",
+    white: "#abb2bf",
+    brightBlack: "#5c6370",
+    brightRed: "#e06c75",
+    brightGreen: "#98c379",
+    brightYellow: "#e5c07b",
+    brightBlue: "#61afef",
+    brightMagenta: "#c678dd",
+    brightCyan: "#56b6c2",
+    brightWhite: "#ffffff",
+  },
+  "github-dark": {
+    background: "#0d1117",
+    foreground: "#c9d1d9",
+    cursor: "#58a6ff",
+    selection: "#163c61",
+    black: "#484f58",
+    red: "#ff7b72",
+    green: "#3fb950",
+    yellow: "#d29922",
+    blue: "#58a6ff",
+    magenta: "#bc8cff",
+    cyan: "#39c5cf",
+    white: "#b1bac4",
+    brightBlack: "#6e7681",
+    brightRed: "#ffa198",
+    brightGreen: "#56d364",
+    brightYellow: "#e3b341",
+    brightBlue: "#79c0ff",
+    brightMagenta: "#d2a8ff",
+    brightCyan: "#56d4dd",
+    brightWhite: "#f0f6fc",
+  },
+};
+
+// Detect system theme
+function getSystemTheme(): "light" | "dark" {
+  return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+}
+
+// Default settings - macOS Terminal matching system theme
+const DEFAULT_SETTINGS: TerminalSettings = {
+  fontFamily: "Menlo, Monaco, 'Courier New', monospace",
+  fontSize: 11,
+  theme: getSystemTheme() === "dark" ? "macos-dark" : "macos-light",
+  cursorBlink: false,
+};
+
 const sessions = new Map<string, Session>();
 let activeSessionId: string | null = null;
 let mcpServers: McpServer[] = [];
+let terminalSettings: TerminalSettings = { ...DEFAULT_SETTINGS };
 
 function createTerminalUI(sessionId: string) {
+  const themeColors = THEME_PRESETS[terminalSettings.theme] || THEME_PRESETS["macos-dark"];
+
   const term = new Terminal({
-    cursorBlink: true,
-    fontSize: 14,
-    fontFamily: 'Menlo, Monaco, "Courier New", monospace',
-    theme: {
-      background: "#000000",
-      foreground: "#ffffff",
-    },
+    cursorBlink: terminalSettings.cursorBlink,
+    fontSize: terminalSettings.fontSize,
+    fontFamily: terminalSettings.fontFamily,
+    theme: themeColors,
   });
 
   const fitAddon = new FitAddon();
@@ -986,3 +1166,99 @@ ipcRenderer.on("mcp-servers-updated", (_event, servers: McpServer[]) => {
 
 // Load MCP servers on startup
 loadMcpServers();
+
+// Settings Modal handling
+const settingsModal = document.getElementById("settings-modal");
+const openSettingsBtn = document.getElementById("open-settings");
+const cancelSettingsBtn = document.getElementById("cancel-settings");
+const resetSettingsBtn = document.getElementById("reset-settings");
+const saveSettingsBtn = document.getElementById("save-settings");
+
+const settingsTheme = document.getElementById("settings-theme") as HTMLSelectElement;
+const settingsFontFamily = document.getElementById("settings-font-family") as HTMLSelectElement;
+const settingsFontSize = document.getElementById("settings-font-size") as HTMLInputElement;
+const settingsCursorBlink = document.getElementById("settings-cursor-blink") as HTMLInputElement;
+
+// Load saved settings on startup
+async function loadSettings() {
+  const savedSettings = await ipcRenderer.invoke("get-terminal-settings");
+  if (savedSettings) {
+    terminalSettings = { ...DEFAULT_SETTINGS, ...savedSettings };
+  }
+}
+
+// Populate settings form
+function populateSettingsForm() {
+  // Set theme
+  settingsTheme.value = terminalSettings.theme;
+
+  // Set font family - match against dropdown options
+  const fontOptions = Array.from(settingsFontFamily.options);
+  const matchingOption = fontOptions.find(opt => opt.value === terminalSettings.fontFamily);
+  if (matchingOption) {
+    settingsFontFamily.value = matchingOption.value;
+  } else {
+    // Default to first option (Menlo) if no match
+    settingsFontFamily.selectedIndex = 0;
+  }
+
+  settingsFontSize.value = terminalSettings.fontSize.toString();
+  settingsCursorBlink.checked = terminalSettings.cursorBlink;
+}
+
+// Apply settings to all existing terminals
+function applySettingsToAllTerminals() {
+  const themeColors = THEME_PRESETS[terminalSettings.theme] || THEME_PRESETS["macos-dark"];
+
+  sessions.forEach((session) => {
+    if (session.terminal) {
+      session.terminal.options.fontFamily = terminalSettings.fontFamily;
+      session.terminal.options.fontSize = terminalSettings.fontSize;
+      session.terminal.options.cursorBlink = terminalSettings.cursorBlink;
+      session.terminal.options.theme = themeColors;
+
+      // Refresh terminal to apply changes
+      if (session.fitAddon) {
+        session.fitAddon.fit();
+      }
+    }
+  });
+}
+
+// Open settings modal
+openSettingsBtn?.addEventListener("click", () => {
+  populateSettingsForm();
+  settingsModal?.classList.remove("hidden");
+});
+
+// Cancel settings
+cancelSettingsBtn?.addEventListener("click", () => {
+  settingsModal?.classList.add("hidden");
+});
+
+// Reset settings to default
+resetSettingsBtn?.addEventListener("click", () => {
+  terminalSettings = { ...DEFAULT_SETTINGS };
+  populateSettingsForm();
+});
+
+// Save settings
+saveSettingsBtn?.addEventListener("click", async () => {
+  // Read values from form
+  terminalSettings.theme = settingsTheme.value;
+  terminalSettings.fontFamily = settingsFontFamily.value || DEFAULT_SETTINGS.fontFamily;
+  terminalSettings.fontSize = parseInt(settingsFontSize.value) || DEFAULT_SETTINGS.fontSize;
+  terminalSettings.cursorBlink = settingsCursorBlink.checked;
+
+  // Save to electron-store
+  await ipcRenderer.invoke("save-terminal-settings", terminalSettings);
+
+  // Apply to all existing terminals
+  applySettingsToAllTerminals();
+
+  // Close modal
+  settingsModal?.classList.add("hidden");
+});
+
+// Load settings on startup
+loadSettings();
