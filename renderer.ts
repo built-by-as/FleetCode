@@ -312,14 +312,28 @@ function addTab(sessionId: string, name: string) {
 
 function markSessionAsUnread(sessionId: string) {
   const session = sessions.get(sessionId);
-  if (!session) return;
+  if (!session) {
+    console.log(`[Unread] ERROR: Session ${sessionId} not found`);
+    return;
+  }
 
+  console.log(`[Unread] Setting hasUnreadActivity flag for session ${sessionId}`);
   session.hasUnreadActivity = true;
 
   // Add unread indicator to tab
   const tab = document.getElementById(`tab-${sessionId}`);
-  if (tab && !tab.classList.contains("unread")) {
-    tab.classList.add("unread");
+  console.log(`[Unread] Tab element for ${sessionId}:`, tab);
+  if (tab) {
+    console.log(`[Unread] Tab classes before:`, tab.className);
+    if (!tab.classList.contains("unread")) {
+      tab.classList.add("unread");
+      console.log(`[Unread] ✓ Added 'unread' class to tab ${sessionId}`);
+      console.log(`[Unread] Tab classes after:`, tab.className);
+    } else {
+      console.log(`[Unread] Tab ${sessionId} already has 'unread' class`);
+    }
+  } else {
+    console.log(`[Unread] ERROR: No tab element found for session ${sessionId}`);
   }
 }
 
@@ -442,15 +456,36 @@ function deleteSession(sessionId: string) {
   }
 }
 
+// Track idle timers per session to detect when output stops (Claude is done)
+const sessionIdleTimers = new Map<string, NodeJS.Timeout>();
+const IDLE_DELAY_MS = 500; // 0.5 seconds of no output = Claude is done
+
 // Handle session output
 ipcRenderer.on("session-output", (_event, sessionId: string, data: string) => {
   const session = sessions.get(sessionId);
   if (session && session.terminal) {
     session.terminal.write(data);
 
-    // Mark as unread if this is not the active session and there's output
+    // Only mark as unread if this is not the active session
     if (activeSessionId !== sessionId && session.hasActivePty) {
-      markSessionAsUnread(sessionId);
+      console.log(`[Unread] Session ${sessionId} received output while inactive`);
+
+      // Clear any existing idle timer
+      const existingTimer = sessionIdleTimers.get(sessionId);
+      if (existingTimer) {
+        console.log(`[Unread] Clearing existing idle timer for session ${sessionId}`);
+        clearTimeout(existingTimer);
+      }
+
+      // Set a new timer - if no output for IDLE_DELAY_MS, mark as unread
+      const timer = setTimeout(() => {
+        console.log(`[Unread] ✓ No output for ${IDLE_DELAY_MS}ms - Claude is done! Marking session ${sessionId} as unread`);
+        markSessionAsUnread(sessionId);
+        sessionIdleTimers.delete(sessionId);
+      }, IDLE_DELAY_MS);
+
+      sessionIdleTimers.set(sessionId, timer);
+      console.log(`[Unread] Set idle timer for session ${sessionId} - will trigger in ${IDLE_DELAY_MS}ms if no more output`);
     }
   }
 });
