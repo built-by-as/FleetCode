@@ -2,6 +2,7 @@ import { app, BrowserWindow, ipcMain, dialog } from "electron";
 import * as pty from "node-pty";
 import * as os from "os";
 import { simpleGit } from "simple-git";
+import Store from "electron-store";
 
 interface SessionConfig {
   projectDir: string;
@@ -11,6 +12,7 @@ interface SessionConfig {
 
 let mainWindow: BrowserWindow;
 const sessions = new Map<string, pty.IPty>();
+const store = new Store();
 
 // Open directory picker
 ipcMain.handle("select-directory", async () => {
@@ -35,6 +37,20 @@ ipcMain.handle("get-branches", async (_event, dirPath: string) => {
     console.error("Error getting branches:", error);
     return [];
   }
+});
+
+// Get last used settings
+ipcMain.handle("get-last-settings", () => {
+  return (store as any).get("lastSessionConfig", {
+    projectDir: "",
+    parentBranch: "",
+    codingAgent: "claude",
+  });
+});
+
+// Save settings
+ipcMain.on("save-settings", (_event, config: SessionConfig) => {
+  (store as any).set("lastSessionConfig", config);
 });
 
 // Create new session

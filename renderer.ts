@@ -214,8 +214,39 @@ const createBtn = document.getElementById("create-session");
 let selectedDirectory = "";
 
 // New session button - opens modal
-document.getElementById("new-session")?.addEventListener("click", () => {
+document.getElementById("new-session")?.addEventListener("click", async () => {
   modal?.classList.remove("hidden");
+
+  // Load last used settings
+  const lastSettings = await ipcRenderer.invoke("get-last-settings");
+
+  if (lastSettings.projectDir) {
+    selectedDirectory = lastSettings.projectDir;
+    projectDirInput.value = lastSettings.projectDir;
+
+    // Load git branches for the last directory
+    const branches = await ipcRenderer.invoke("get-branches", lastSettings.projectDir);
+    parentBranchSelect.innerHTML = "";
+
+    if (branches.length === 0) {
+      parentBranchSelect.innerHTML = '<option value="">No git repository found</option>';
+    } else {
+      branches.forEach((branch: string) => {
+        const option = document.createElement("option");
+        option.value = branch;
+        option.textContent = branch;
+        if (branch === lastSettings.parentBranch) {
+          option.selected = true;
+        }
+        parentBranchSelect.appendChild(option);
+      });
+    }
+  }
+
+  // Set last used coding agent
+  if (lastSettings.codingAgent) {
+    codingAgentSelect.value = lastSettings.codingAgent;
+  }
 });
 
 // Browse directory
@@ -263,6 +294,10 @@ createBtn?.addEventListener("click", () => {
     codingAgent: codingAgentSelect.value,
   };
 
+  // Save settings for next time
+  ipcRenderer.send("save-settings", config);
+
+  // Create the session
   ipcRenderer.send("create-session", config);
   modal?.classList.add("hidden");
 
