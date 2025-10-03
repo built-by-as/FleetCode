@@ -1,5 +1,7 @@
 # FleetCode
 
+![FleetCode](fleetcode.png)
+
 A desktop terminal application for running multiple CLI coding agents simultaneously, each in isolated git worktrees.
 
 ## Features
