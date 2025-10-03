@@ -9,6 +9,8 @@
     "build": "npm run build:css && npm run build:ts",
     "start": "npm run build && electron .",
     "dev": "npm run build && electron .",
+    "pack": "npm run build && electron-builder --dir",
+    "dist": "npm run build && electron-builder",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "author": "built-by-as",
@@ -19,6 +21,7 @@
     "@types/uuid": "^10.0.0",
     "autoprefixer": "^10.4.21",
     "electron": "^38.2.0",
+    "electron-builder": "^26.0.12",
     "electron-rebuild": "^3.2.9",
     "postcss": "^8.5.6",
     "tailwindcss": "^3.4.18",
@@ -32,5 +35,34 @@
     "uuid": "^13.0.0",
     "xterm": "^5.3.0",
     "xterm-addon-fit": "^0.8.0"
+  },
+  "build": {
+    "appId": "com.fleetcode.app",
+    "productName": "FleetCode",
+    "files": [
+      "dist/**/*",
+      "index.html",
+      "node_modules/**/*"
+    ],
+    "mac": {
+      "category": "public.app-category.developer-tools",
+      "target": [
+        "dmg",
+        "zip"
+      ]
+    },
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "category": "Development"
+    },
+    "win": {
+      "target": [
+        "nsis",
+        "zip"
+      ]
+    }
   }
 }
