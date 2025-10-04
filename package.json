@@ -60,12 +60,6 @@
         "deb"
       ],
       "category": "Development"
-    },
-    "win": {
-      "target": [
-        "nsis",
-        "zip"
-      ]
     }
   }
 }

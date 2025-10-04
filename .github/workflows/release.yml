@@ -14,7 +14,7 @@ jobs:
 
     strategy:
       matrix:
-        os: [macos-latest, ubuntu-latest, windows-latest]
+        os: [macos-latest, ubuntu-latest]
 
     steps:
       - name: Check out Git repository
@@ -25,20 +25,8 @@ jobs:
         with:
           node-version: 20
 
-      - name: Setup MSBuild (Windows)
-        if: matrix.os == 'windows-latest'
-        uses: microsoft/setup-msbuild@v2
-
-      - name: Install Windows SDK (Windows)
-        if: matrix.os == 'windows-latest'
-        shell: powershell
-        run: |
-          choco install windows-sdk-10-version-2004-all -y
-
       - name: Install dependencies
         run: npm install
-        env:
-          npm_config_msvs_version: 2022
 
       - name: Build application
         run: npm run dist
@@ -63,15 +51,6 @@ jobs:
             dist/*.AppImage
             dist/*.deb
 
-      - name: Upload artifacts (Windows)
-        if: matrix.os == 'windows-latest'
-        uses: actions/upload-artifact@v4
-        with:
-          name: windows-build
-          path: |
-            dist/*.exe
-            dist/*.zip
-
       - name: Release
         uses: softprops/action-gh-release@v2
         if: startsWith(github.ref, 'refs/tags/')
@@ -81,6 +60,5 @@ jobs:
             dist/*.zip
             dist/*.AppImage
             dist/*.deb
-            dist/*.exe
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
