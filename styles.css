@@ -208,4 +208,12 @@
   .btn-icon {
     @apply bg-gray-600 hover:bg-gray-700 text-white px-3 py-2 rounded text-sm font-medium transition;
   }
+
+  .btn-primary.loading {
+    @apply opacity-75 cursor-not-allowed;
+  }
+
+  .btn-primary.loading .loading-spinner {
+    @apply border-white border-t-transparent;
+  }
 }

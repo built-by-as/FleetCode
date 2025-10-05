@@ -740,6 +740,29 @@ ipcRenderer.on("session-output", (_event, sessionId: string, data: string) => {
 ipcRenderer.on("session-created", (_event, sessionId: string, persistedSession: any) => {
   const session = addSession(persistedSession, true);
   activateSession(sessionId);
+
+  // Reset button state and close modal
+  const createBtn = document.getElementById("create-session") as HTMLButtonElement;
+  const modal = document.getElementById("config-modal");
+  const projectDirInput = document.getElementById("project-dir") as HTMLInputElement;
+  const parentBranchSelect = document.getElementById("parent-branch") as HTMLSelectElement;
+  const setupCommandsTextarea = document.getElementById("setup-commands") as HTMLTextAreaElement;
+
+  if (createBtn) {
+    createBtn.disabled = false;
+    createBtn.textContent = "Create Session";
+    createBtn.classList.remove("loading");
+  }
+
+  modal?.classList.add("hidden");
+
+  // Reset form
+  projectDirInput.value = "";
+  selectedDirectory = "";
+  parentBranchSelect.innerHTML = '<option value="">Loading branches...</option>';
+  if (setupCommandsTextarea) {
+    setupCommandsTextarea.value = "";
+  }
 });
 
 // Handle session reopened
@@ -784,7 +807,7 @@ const skipPermissionsCheckbox = document.getElementById("skip-permissions") as H
 const skipPermissionsGroup = skipPermissionsCheckbox?.parentElement?.parentElement;
 const browseDirBtn = document.getElementById("browse-dir");
 const cancelBtn = document.getElementById("cancel-session");
-const createBtn = document.getElementById("create-session");
+const createBtn = document.getElementById("create-session") as HTMLButtonElement;
 
 let selectedDirectory = "";
 
@@ -904,21 +927,18 @@ createBtn?.addEventListener("click", () => {
     setupCommands,
   };
 
+  // Show loading state
+  if (createBtn) {
+    createBtn.disabled = true;
+    createBtn.innerHTML = '<span class="loading-spinner"></span> Creating...';
+    createBtn.classList.add("loading");
+  }
+
   // Save settings for next time
   ipcRenderer.send("save-settings", config);
 
   // Create the session
   ipcRenderer.send("create-session", config);
-  modal?.classList.add("hidden");
-
-  // Reset form
-  projectDirInput.value = "";
-  selectedDirectory = "";
-  parentBranchSelect.innerHTML = '<option value="">Loading branches...</option>';
-  codingAgentSelect.value = "claude";
-  if (setupCommandsTextarea) {
-    setupCommandsTextarea.value = "";
-  }
 });
 
 // MCP Server management functions

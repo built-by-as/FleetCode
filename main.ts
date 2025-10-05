@@ -48,6 +48,78 @@ function getNextSessionNumber(): number {
   return Math.max(...sessions.map(s => s.number)) + 1;
 }
 
+// Helper function to spawn PTY and setup coding agent
+function spawnSessionPty(
+  sessionId: string,
+  worktreePath: string,
+  config: SessionConfig,
+  sessionUuid: string,
+  isNewSession: boolean
+) {
+  const shell = os.platform() === "darwin" ? "zsh" : "bash";
+  const ptyProcess = pty.spawn(shell, ["-l"], {
+    name: "xterm-color",
+    cols: 80,
+    rows: 30,
+    cwd: worktreePath,
+    env: process.env,
+  });
+
+  activePtyProcesses.set(sessionId, ptyProcess);
+
+  let terminalReady = false;
+  let dataBuffer = "";
+
+  ptyProcess.onData((data) => {
+    // Only send data if window still exists and is not destroyed
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send("session-output", sessionId, data);
+    }
+
+    // Detect when terminal is ready
+    if (!terminalReady) {
+      dataBuffer += data;
+
+      // Method 1: Look for bracketed paste mode enable sequence
+      // Method 2: Fallback - look for common prompt indicators
+      const isReady = dataBuffer.includes("\x1b[?2004h") ||
+        dataBuffer.includes("$ ") || dataBuffer.includes("% ") ||
+        dataBuffer.includes("> ") || dataBuffer.includes("➜ ") ||
+        dataBuffer.includes("➜  ") || dataBuffer.includes("✗ ") ||
+        dataBuffer.includes("✓ ") || dataBuffer.endsWith("$") ||
+        dataBuffer.endsWith("%") || dataBuffer.endsWith(">") ||
+        dataBuffer.endsWith("➜") || dataBuffer.endsWith("✗") ||
+        dataBuffer.endsWith("✓");
+
+      if (isReady) {
+        terminalReady = true;
+
+        // Run setup commands if provided
+        if (config.setupCommands && config.setupCommands.length > 0) {
+          config.setupCommands.forEach(cmd => {
+            ptyProcess.write(cmd + "\r");
+          });
+        }
+
+        // Auto-run the selected coding agent
+        if (config.codingAgent === "claude") {
+          const sessionFlag = isNewSession
+            ? `--session-id ${sessionUuid}`
+            : `--resume ${sessionUuid}`;
+          const skipPermissionsFlag = config.skipPermissions ? "--dangerously-skip-permissions" : "";
+          const flags = [sessionFlag, skipPermissionsFlag].filter(f => f).join(" ");
+          const claudeCmd = `claude ${flags}\r`;
+          ptyProcess.write(claudeCmd);
+        } else if (config.codingAgent === "codex") {
+          ptyProcess.write("codex\r");
+        }
+      }
+    }
+  });
+
+  return ptyProcess;
+}
+
 // Git worktree helper functions
 async function ensureFleetcodeExcluded(projectDir: string) {
   // Check if we've already initialized this project (persisted across app restarts)
@@ -204,85 +276,7 @@ ipcMain.on("create-session", async (event, config: SessionConfig) => {
     savePersistedSessions(sessions);
 
     // Spawn PTY in worktree directory
-    const shell = os.platform() === "darwin" ? "zsh" : "bash";
-    const ptyProcess = pty.spawn(shell, [], {
-      name: "xterm-color",
-      cols: 80,
-      rows: 30,
-      cwd: worktreePath,
-      env: process.env,
-    });
-
-    activePtyProcesses.set(sessionId, ptyProcess);
-
-    let terminalReady = false;
-    let dataBuffer = "";
-
-    ptyProcess.onData((data) => {
-      // Only send data if window still exists and is not destroyed
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send("session-output", sessionId, data);
-      }
-
-      // Detect when terminal is ready
-      if (!terminalReady) {
-        dataBuffer += data;
-
-        // Method 1: Look for bracketed paste mode enable sequence
-        if (dataBuffer.includes("\x1b[?2004h")) {
-          terminalReady = true;
-
-          // Run setup commands if provided
-          if (config.setupCommands && config.setupCommands.length > 0) {
-            config.setupCommands.forEach(cmd => {
-              ptyProcess.write(cmd + "\r");
-            });
-          }
-
-          // Auto-run the selected coding agent
-          if (config.codingAgent === "claude") {
-            // New session always uses --session-id
-            const sessionFlag = `--session-id ${sessionUuid}`;
-            const skipPermissionsFlag = config.skipPermissions ? "--dangerously-skip-permissions" : "";
-            const flags = [sessionFlag, skipPermissionsFlag].filter(f => f).join(" ");
-            const claudeCmd = `claude ${flags}\r`;
-            ptyProcess.write(claudeCmd);
-          } else if (config.codingAgent === "codex") {
-            ptyProcess.write("codex\r");
-          }
-        }
-
-        // Method 2: Fallback - look for common prompt indicators
-        else if (dataBuffer.includes("$ ") || dataBuffer.includes("% ") ||
-            dataBuffer.includes("> ") || dataBuffer.includes("➜ ") ||
-            dataBuffer.includes("➜  ") ||
-            dataBuffer.includes("✗ ") || dataBuffer.includes("✓ ") ||
-            dataBuffer.endsWith("$") || dataBuffer.endsWith("%") ||
-            dataBuffer.endsWith(">") || dataBuffer.endsWith("➜") ||
-            dataBuffer.endsWith("✗") || dataBuffer.endsWith("✓")) {
-          terminalReady = true;
-
-          // Run setup commands if provided
-          if (config.setupCommands && config.setupCommands.length > 0) {
-            config.setupCommands.forEach(cmd => {
-              ptyProcess.write(cmd + "\r");
-            });
-          }
-
-          // Auto-run the selected coding agent
-          if (config.codingAgent === "claude") {
-            // New session always uses --session-id
-            const sessionFlag = `--session-id ${sessionUuid}`;
-            const skipPermissionsFlag = config.skipPermissions ? "--dangerously-skip-permissions" : "";
-            const flags = [sessionFlag, skipPermissionsFlag].filter(f => f).join(" ");
-            const claudeCmd = `claude ${flags}\r`;
-            ptyProcess.write(claudeCmd);
-          } else if (config.codingAgent === "codex") {
-            ptyProcess.write("codex\r");
-          }
-        }
-      }
-    });
+    spawnSessionPty(sessionId, worktreePath, config, sessionUuid, true);
 
     event.reply("session-created", sessionId, persistedSession);
   } catch (error) {
@@ -326,56 +320,7 @@ ipcMain.on("reopen-session", (event, sessionId: string) => {
   }
 
   // Spawn new PTY in worktree directory
-  const shell = os.platform() === "darwin" ? "zsh" : "bash";
-  const ptyProcess = pty.spawn(shell, [], {
-    name: "xterm-color",
-    cols: 80,
-    rows: 30,
-    cwd: session.worktreePath,
-    env: process.env,
-  });
-
-  activePtyProcesses.set(sessionId, ptyProcess);
-
-  let terminalReady = false;
-  let dataBuffer = "";
-
-  ptyProcess.onData((data) => {
-    // Only send data if window still exists and is not destroyed
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send("session-output", sessionId, data);
-    }
-
-    // Detect when terminal is ready and auto-run agent
-    if (!terminalReady) {
-      dataBuffer += data;
-
-      if (dataBuffer.includes("\x1b[?2004h") ||
-          dataBuffer.includes("$ ") || dataBuffer.includes("% ") ||
-          dataBuffer.includes("➜ ") || dataBuffer.includes("✗ ") ||
-          dataBuffer.includes("✓ ")) {
-        terminalReady = true;
-
-        // Run setup commands if provided
-        if (session.config.setupCommands && session.config.setupCommands.length > 0) {
-          session.config.setupCommands.forEach(cmd => {
-            ptyProcess.write(cmd + "\r");
-          });
-        }
-
-        if (session.config.codingAgent === "claude") {
-          // Reopened session always uses --resume
-          const sessionFlag = `--resume ${session.sessionUuid}`;
-          const skipPermissionsFlag = session.config.skipPermissions ? "--dangerously-skip-permissions" : "";
-          const flags = [sessionFlag, skipPermissionsFlag].filter(f => f).join(" ");
-          const claudeCmd = `claude ${flags}\r`;
-          ptyProcess.write(claudeCmd);
-        } else if (session.config.codingAgent === "codex") {
-          ptyProcess.write("codex\r");
-        }
-      }
-    }
-  });
+  spawnSessionPty(sessionId, session.worktreePath, session.config, session.sessionUuid, false);
 
   event.reply("session-reopened", sessionId);
 });
