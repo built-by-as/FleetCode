@@ -9,7 +9,7 @@ permissions:
   contents: write
 
 jobs:
-  release:
+  build:
     runs-on: ${{ matrix.os }}
 
     strategy:
@@ -30,8 +30,6 @@ jobs:
 
       - name: Build application
         run: npm run dist
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Upload artifacts (macOS)
         if: matrix.os == 'macos-latest'
@@ -51,14 +49,23 @@ jobs:
             dist/*.AppImage
             dist/*.deb
 
-      - name: Release
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Display structure of downloaded files
+        run: ls -R artifacts
+
+      - name: Create Release
         uses: softprops/action-gh-release@v2
-        if: startsWith(github.ref, 'refs/tags/')
         with:
           files: |
-            dist/*.dmg
-            dist/*.zip
-            dist/*.AppImage
-            dist/*.deb
+            artifacts/macos-build/*
+            artifacts/linux-build/*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
