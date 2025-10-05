@@ -29,9 +29,7 @@ jobs:
         run: npm install
 
       - name: Build application
-        run: npm run dist
-        env:
-          GH_TOKEN: ""
+        run: npm run build && electron-builder --publish never
 
       - name: Upload artifacts (macOS)
         if: matrix.os == 'macos-latest'
