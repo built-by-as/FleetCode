@@ -27,6 +27,7 @@ interface PersistedSession {
   worktreePath: string;
   createdAt: number;
   sessionUuid: string;
+  mcpConfigPath?: string;
 }
 
 let mainWindow: BrowserWindow;
@@ -49,14 +50,61 @@ function getNextSessionNumber(): number {
   return Math.max(...sessions.map(s => s.number)) + 1;
 }
 
+// Extract MCP config for a project from ~/.claude.json
+function extractProjectMcpConfig(projectDir: string): any {
+  try {
+    const claudeConfigPath = path.join(os.homedir(), ".claude.json");
+
+    if (!fs.existsSync(claudeConfigPath)) {
+      return {};
+    }
+
+    const claudeConfig = JSON.parse(fs.readFileSync(claudeConfigPath, "utf8"));
+
+    if (!claudeConfig.projects || !claudeConfig.projects[projectDir]) {
+      return {};
+    }
+
+    return claudeConfig.projects[projectDir].mcpServers || {};
+  } catch (error) {
+    console.error("Error extracting MCP config:", error);
+    return {};
+  }
+}
+
+// Write MCP config file for a project (shared across all sessions)
+function writeMcpConfigFile(projectDir: string, mcpServers: any): string | null {
+  try {
+    // Create a hash of the project directory for unique filename
+    const crypto = require("crypto");
+    const hash = crypto.createHash("md5").update(projectDir).digest("hex").substring(0, 8);
+
+    const fleetcodeDir = path.join(projectDir, ".fleetcode");
+    if (!fs.existsSync(fleetcodeDir)) {
+      fs.mkdirSync(fleetcodeDir, { recursive: true });
+    }
+
+    const configFilePath = path.join(fleetcodeDir, `mcp-config-${hash}.json`);
+    const configContent = JSON.stringify({ mcpServers }, null, 2);
+
+    fs.writeFileSync(configFilePath, configContent, "utf8");
+
+    return configFilePath;
+  } catch (error) {
+    console.error("Error writing MCP config file:", error);
+    return null;
+  }
+}
+
 // Spawn headless PTY for MCP polling
-function spawnMcpPoller(sessionId: string, worktreePath: string) {
+function spawnMcpPoller(sessionId: string, projectDir: string) {
+  console.log(`[MCP Poller] Spawning for session ${sessionId}, project dir: ${projectDir}`);
   const shell = os.platform() === "darwin" ? "zsh" : "bash";
   const ptyProcess = pty.spawn(shell, ["-l"], {
     name: "xterm-color",
     cols: 80,
     rows: 30,
-    cwd: worktreePath,
+    cwd: projectDir,
     env: process.env,
   });
 
@@ -68,6 +116,7 @@ function spawnMcpPoller(sessionId: string, worktreePath: string) {
   ptyProcess.onData((data) => {
     // Accumulate output without displaying it
     outputBuffer += data;
+    console.log(`[MCP Poller ${sessionId}] Data:`, data.substring(0, 100));
 
     // Parse output whenever we have MCP server entries
     // Match lines like: "servername: url (type) - ✓ Connected" or "servername: command (stdio) - ✓ Connected"
@@ -75,8 +124,10 @@ function spawnMcpPoller(sessionId: string, worktreePath: string) {
     const mcpServerLineRegex = /^[\w-]+:.+\((?:SSE|stdio)\)\s+-\s+[✓⚠]/m;
 
     if (mcpServerLineRegex.test(data) || data.includes("No MCP servers configured")) {
+      console.log(`[MCP Poller ${sessionId}] MCP output detected, parsing...`);
       try {
         const servers = parseMcpOutput(outputBuffer);
+        console.log(`[MCP Poller ${sessionId}] Parsed servers:`, servers);
 
         // Merge servers into the map (upsert by name)
         servers.forEach(server => {
@@ -84,33 +135,42 @@ function spawnMcpPoller(sessionId: string, worktreePath: string) {
         });
 
         const allServers = Array.from(serverMap.values());
+        console.log(`[MCP Poller ${sessionId}] Total servers:`, allServers);
 
         if (mainWindow && !mainWindow.isDestroyed()) {
           mainWindow.webContents.send("mcp-servers-updated", sessionId, allServers);
+          console.log(`[MCP Poller ${sessionId}] Sent mcp-servers-updated event`);
         }
       } catch (error) {
-        console.error("Error parsing MCP output:", error);
+        console.error(`[MCP Poller ${sessionId}] Error parsing:`, error);
       }
     }
 
     // Clear buffer when we see the shell prompt (command finished)
     if ((data.includes("% ") || data.includes("$ ") || data.includes("➜ ")) &&
         outputBuffer.includes("claude mcp list")) {
+      console.log(`[MCP Poller ${sessionId}] Command complete, clearing buffer`);
       outputBuffer = "";
     }
   });
 
-  // Wait for shell to be ready, then start polling loop
+  // Start polling immediately and then every 60 seconds
+  console.log(`[MCP Poller ${sessionId}] Starting polling loop`);
+  const pollMcp = () => {
+    if (mcpPollerPtyProcesses.has(sessionId)) {
+      const command = `claude mcp list`;
+      console.log(`[MCP Poller ${sessionId}] Running command: ${command}`);
+      ptyProcess.write(command + "\r");
+      setTimeout(pollMcp, 60000);
+    } else {
+      console.log(`[MCP Poller ${sessionId}] No longer active, stopping`);
+    }
+  };
+
+  // Wait briefly for shell to be ready before first poll
   setTimeout(() => {
-    // Run `claude mcp list` every 60 seconds
-    const pollMcp = () => {
-      if (mcpPollerPtyProcesses.has(sessionId)) {
-        ptyProcess.write("claude mcp list\r");
-        setTimeout(pollMcp, 60000);
-      }
-    };
     pollMcp();
-  }, 2000); // Wait 2s for shell to initialize
+  }, 500);
 }
 
 // Parse MCP server list output
@@ -157,7 +217,9 @@ function spawnSessionPty(
   worktreePath: string,
   config: SessionConfig,
   sessionUuid: string,
-  isNewSession: boolean
+  isNewSession: boolean,
+  mcpConfigPath?: string,
+  projectDir?: string
 ) {
   const shell = os.platform() === "darwin" ? "zsh" : "bash";
   const ptyProcess = pty.spawn(shell, ["-l"], {
@@ -211,7 +273,8 @@ function spawnSessionPty(
             ? `--session-id ${sessionUuid}`
             : `--resume ${sessionUuid}`;
           const skipPermissionsFlag = config.skipPermissions ? "--dangerously-skip-permissions" : "";
-          const flags = [sessionFlag, skipPermissionsFlag].filter(f => f).join(" ");
+          const mcpConfigFlag = mcpConfigPath ? `--mcp-config ${mcpConfigPath}` : "";
+          const flags = [sessionFlag, skipPermissionsFlag, mcpConfigFlag].filter(f => f).join(" ");
           const claudeCmd = `claude ${flags}\r`;
           ptyProcess.write(claudeCmd);
         } else if (config.codingAgent === "codex") {
@@ -226,8 +289,8 @@ function spawnSessionPty(
         claudeReady = true;
         // Spawn MCP poller now that Claude is authenticated and ready
         // Check if poller doesn't already exist to prevent duplicates
-        if (!mcpPollerPtyProcesses.has(sessionId)) {
-          spawnMcpPoller(sessionId, worktreePath);
+        if (!mcpPollerPtyProcesses.has(sessionId) && projectDir) {
+          spawnMcpPoller(sessionId, projectDir);
         }
       }
     }
@@ -377,6 +440,10 @@ ipcMain.on("create-session", async (event, config: SessionConfig) => {
     // Create git worktree with unique branch name
     const worktreePath = await createWorktree(config.projectDir, config.parentBranch, sessionNumber, sessionUuid);
 
+    // Extract and write MCP config
+    const mcpServers = extractProjectMcpConfig(config.projectDir);
+    const mcpConfigPath = writeMcpConfigFile(config.projectDir, mcpServers);
+
     // Create persisted session metadata
     const persistedSession: PersistedSession = {
       id: sessionId,
@@ -386,6 +453,7 @@ ipcMain.on("create-session", async (event, config: SessionConfig) => {
       worktreePath,
       createdAt: Date.now(),
       sessionUuid,
+      mcpConfigPath: mcpConfigPath || undefined,
     };
 
     // Save to store
@@ -394,7 +462,7 @@ ipcMain.on("create-session", async (event, config: SessionConfig) => {
     savePersistedSessions(sessions);
 
     // Spawn PTY in worktree directory
-    spawnSessionPty(sessionId, worktreePath, config, sessionUuid, true);
+    spawnSessionPty(sessionId, worktreePath, config, sessionUuid, true, mcpConfigPath || undefined, config.projectDir);
 
     event.reply("session-created", sessionId, persistedSession);
   } catch (error) {
@@ -438,7 +506,7 @@ ipcMain.on("reopen-session", (event, sessionId: string) => {
   }
 
   // Spawn new PTY in worktree directory
-  spawnSessionPty(sessionId, session.worktreePath, session.config, session.sessionUuid, false);
+  spawnSessionPty(sessionId, session.worktreePath, session.config, session.sessionUuid, false, session.mcpConfigPath, session.config.projectDir);
 
   event.reply("session-reopened", sessionId);
 });
