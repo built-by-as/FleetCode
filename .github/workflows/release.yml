@@ -30,6 +30,8 @@ jobs:
 
       - name: Build application
         run: npm run dist
+        env:
+          GH_TOKEN: ""
 
       - name: Upload artifacts (macOS)
         if: matrix.os == 'macos-latest'
