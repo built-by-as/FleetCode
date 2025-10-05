@@ -31,6 +31,7 @@ interface PersistedSession {
 
 let mainWindow: BrowserWindow;
 const activePtyProcesses = new Map<string, pty.IPty>();
+const mcpPollerPtyProcesses = new Map<string, pty.IPty>();
 const store = new Store();
 
 // Helper functions for session management
@@ -46,6 +47,108 @@ function getNextSessionNumber(): number {
   const sessions = getPersistedSessions();
   if (sessions.length === 0) return 1;
   return Math.max(...sessions.map(s => s.number)) + 1;
+}
+
+// Spawn headless PTY for MCP polling
+function spawnMcpPoller(sessionId: string, worktreePath: string) {
+  const shell = os.platform() === "darwin" ? "zsh" : "bash";
+  const ptyProcess = pty.spawn(shell, ["-l"], {
+    name: "xterm-color",
+    cols: 80,
+    rows: 30,
+    cwd: worktreePath,
+    env: process.env,
+  });
+
+  mcpPollerPtyProcesses.set(sessionId, ptyProcess);
+
+  let outputBuffer = "";
+  const serverMap = new Map<string, any>();
+
+  ptyProcess.onData((data) => {
+    // Accumulate output without displaying it
+    outputBuffer += data;
+
+    // Parse output whenever we have MCP server entries
+    // Match lines like: "servername: url (type) - ✓ Connected" or "servername: command (stdio) - ✓ Connected"
+    // Pattern handles both SSE (with URLs) and stdio (with commands/paths)
+    const mcpServerLineRegex = /^[\w-]+:.+\((?:SSE|stdio)\)\s+-\s+[✓⚠]/m;
+
+    if (mcpServerLineRegex.test(data) || data.includes("No MCP servers configured")) {
+      try {
+        const servers = parseMcpOutput(outputBuffer);
+
+        // Merge servers into the map (upsert by name)
+        servers.forEach(server => {
+          serverMap.set(server.name, server);
+        });
+
+        const allServers = Array.from(serverMap.values());
+
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send("mcp-servers-updated", sessionId, allServers);
+        }
+      } catch (error) {
+        console.error("Error parsing MCP output:", error);
+      }
+    }
+
+    // Clear buffer when we see the shell prompt (command finished)
+    if ((data.includes("% ") || data.includes("$ ") || data.includes("➜ ")) &&
+        outputBuffer.includes("claude mcp list")) {
+      outputBuffer = "";
+    }
+  });
+
+  // Wait for shell to be ready, then start polling loop
+  setTimeout(() => {
+    // Run `claude mcp list` every 60 seconds
+    const pollMcp = () => {
+      if (mcpPollerPtyProcesses.has(sessionId)) {
+        ptyProcess.write("claude mcp list\r");
+        setTimeout(pollMcp, 60000);
+      }
+    };
+    pollMcp();
+  }, 2000); // Wait 2s for shell to initialize
+}
+
+// Parse MCP server list output
+function parseMcpOutput(output: string): any[] {
+  const servers = [];
+
+  if (output.includes("No MCP servers configured")) {
+    return [];
+  }
+
+  const lines = output.trim().split("\n").filter(line => line.trim());
+
+  for (const line of lines) {
+    // Skip header lines, empty lines, and status messages
+    if (line.includes("MCP servers") ||
+        line.includes("---") ||
+        line.includes("Checking") ||
+        line.includes("health") ||
+        line.includes("claude mcp list") ||
+        !line.trim()) {
+      continue;
+    }
+
+    // Only parse lines that match the MCP server format
+    // Must have: "name: something (SSE|stdio) - status"
+    const serverMatch = line.match(/^([\w-]+):.+\((?:SSE|stdio)\)\s+-\s+[✓⚠]/);
+    if (serverMatch) {
+      const serverName = serverMatch[1];
+      const isConnected = line.includes("✓") || line.includes("Connected");
+
+      servers.push({
+        name: serverName,
+        connected: isConnected
+      });
+    }
+  }
+
+  return servers;
 }
 
 // Helper function to spawn PTY and setup coding agent
@@ -68,6 +171,7 @@ function spawnSessionPty(
   activePtyProcesses.set(sessionId, ptyProcess);
 
   let terminalReady = false;
+  let claudeReady = false;
   let dataBuffer = "";
 
   ptyProcess.onData((data) => {
@@ -115,6 +219,18 @@ function spawnSessionPty(
         }
       }
     }
+
+    // Detect when Claude is ready (shows "> " prompt)
+    if (terminalReady && !claudeReady && config.codingAgent === "claude") {
+      if (data.includes("> ")) {
+        claudeReady = true;
+        // Spawn MCP poller now that Claude is authenticated and ready
+        // Check if poller doesn't already exist to prevent duplicates
+        if (!mcpPollerPtyProcesses.has(sessionId)) {
+          spawnMcpPoller(sessionId, worktreePath);
+        }
+      }
+    }
   });
 
   return ptyProcess;
@@ -159,12 +275,14 @@ async function ensureFleetcodeExcluded(projectDir: string) {
   }
 }
 
-async function createWorktree(projectDir: string, parentBranch: string, sessionNumber: number): Promise<string> {
+async function createWorktree(projectDir: string, parentBranch: string, sessionNumber: number, sessionUuid: string): Promise<string> {
   const git = simpleGit(projectDir);
   const fleetcodeDir = path.join(projectDir, ".fleetcode");
   const worktreeName = `session${sessionNumber}`;
   const worktreePath = path.join(fleetcodeDir, worktreeName);
-  const branchName = `fleetcode/session${sessionNumber}`;
+  // Include short UUID to ensure branch uniqueness across deletes/recreates
+  const shortUuid = sessionUuid.split('-')[0];
+  const branchName = `fleetcode/session${sessionNumber}-${shortUuid}`;
 
   // Create .fleetcode directory if it doesn't exist
   if (!fs.existsSync(fleetcodeDir)) {
@@ -250,14 +368,14 @@ ipcMain.on("create-session", async (event, config: SessionConfig) => {
     const sessionId = `session-${Date.now()}`;
     const sessionName = `Session ${sessionNumber}`;
 
+    // Generate UUID for this session (before creating worktree)
+    const sessionUuid = uuidv4();
+
     // Ensure .fleetcode is excluded (async, don't wait)
     ensureFleetcodeExcluded(config.projectDir);
 
-    // Create git worktree
-    const worktreePath = await createWorktree(config.projectDir, config.parentBranch, sessionNumber);
-
-    // Generate UUID for this session
-    const sessionUuid = uuidv4();
+    // Create git worktree with unique branch name
+    const worktreePath = await createWorktree(config.projectDir, config.parentBranch, sessionNumber, sessionUuid);
 
     // Create persisted session metadata
     const persistedSession: PersistedSession = {
@@ -332,6 +450,13 @@ ipcMain.on("close-session", (_event, sessionId: string) => {
     ptyProcess.kill();
     activePtyProcesses.delete(sessionId);
   }
+
+  // Kill MCP poller if active
+  const mcpPoller = mcpPollerPtyProcesses.get(sessionId);
+  if (mcpPoller) {
+    mcpPoller.kill();
+    mcpPollerPtyProcesses.delete(sessionId);
+  }
 });
 
 // Delete session (kill PTY, remove worktree, delete from store)
@@ -341,6 +466,13 @@ ipcMain.on("delete-session", async (_event, sessionId: string) => {
   if (ptyProcess) {
     ptyProcess.kill();
     activePtyProcesses.delete(sessionId);
+  }
+
+  // Kill MCP poller if active
+  const mcpPoller = mcpPollerPtyProcesses.get(sessionId);
+  if (mcpPoller) {
+    mcpPoller.kill();
+    mcpPollerPtyProcesses.delete(sessionId);
   }
 
   // Find and remove from persisted sessions
@@ -476,9 +608,15 @@ async function getMcpServerDetails(name: string) {
   }
 }
 
-ipcMain.handle("list-mcp-servers", async () => {
+ipcMain.handle("list-mcp-servers", async (_event, sessionId: string) => {
   try {
-    return await listMcpServers();
+    // Trigger an immediate MCP list command in the session's poller
+    const mcpPoller = mcpPollerPtyProcesses.get(sessionId);
+    if (mcpPoller) {
+      mcpPoller.write("claude mcp list\r");
+    }
+    // Return empty array - actual results will come via mcp-servers-updated event
+    return [];
   } catch (error) {
     console.error("Error listing MCP servers:", error);
     return [];
@@ -541,19 +679,21 @@ const createWindow = () => {
       }
     });
     activePtyProcesses.clear();
+
+    // Kill all MCP poller processes
+    mcpPollerPtyProcesses.forEach((ptyProcess, sessionId) => {
+      try {
+        ptyProcess.kill();
+      } catch (error) {
+        console.error(`Error killing MCP poller for session ${sessionId}:`, error);
+      }
+    });
+    mcpPollerPtyProcesses.clear();
   });
 };
 
 app.whenReady().then(() => {
   createWindow();
-
-  // Refresh MCP server list every minute and broadcast to all windows
-  setInterval(async () => {
-    const servers = await listMcpServers();
-    BrowserWindow.getAllWindows().forEach(window => {
-      window.webContents.send("mcp-servers-updated", servers);
-    });
-  }, 60000); // 60000ms = 1 minute
 
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) {

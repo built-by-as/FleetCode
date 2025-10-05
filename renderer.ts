@@ -576,6 +576,15 @@ function switchToSession(sessionId: string) {
     document.getElementById(`sidebar-${sessionId}`)?.classList.add("active");
     activeSessionId = sessionId;
 
+    // Show MCP section when a session is active
+    const mcpSection = document.getElementById("mcp-section");
+    if (mcpSection) {
+      mcpSection.style.display = "block";
+    }
+
+    // Load MCP servers for this session
+    loadMcpServers();
+
     // Clear unread status when switching to this session
     clearUnreadStatus(sessionId);
 
@@ -648,6 +657,11 @@ function closeSession(sessionId: string) {
       switchToSession(activeSessions[0].id);
     } else {
       activeSessionId = null;
+      // Hide MCP section when no sessions are active
+      const mcpSection = document.getElementById("mcp-section");
+      if (mcpSection) {
+        mcpSection.style.display = "none";
+      }
     }
   }
 }
@@ -943,6 +957,11 @@ createBtn?.addEventListener("click", () => {
 
 // MCP Server management functions
 async function loadMcpServers() {
+  // Only load MCP servers if there's an active session
+  if (!activeSessionId) {
+    return;
+  }
+
   const addMcpServerBtn = document.getElementById("add-mcp-server");
 
   // Show loading spinner
@@ -952,9 +971,8 @@ async function loadMcpServers() {
   }
 
   try {
-    const servers = await ipcRenderer.invoke("list-mcp-servers");
-    mcpServers = servers;
-    renderMcpServers();
+    await ipcRenderer.invoke("list-mcp-servers", activeSessionId);
+    // Results will come via mcp-servers-updated event
   } catch (error) {
     console.error("Failed to load MCP servers:", error);
   } finally {
@@ -1226,13 +1244,13 @@ removeMcpDetailsBtn?.addEventListener("click", async () => {
 });
 
 // Listen for MCP server updates from main process
-ipcRenderer.on("mcp-servers-updated", (_event, servers: McpServer[]) => {
-  mcpServers = servers;
-  renderMcpServers();
+ipcRenderer.on("mcp-servers-updated", (_event, sessionId: string, servers: McpServer[]) => {
+  // Only update if this is for the active session
+  if (sessionId === activeSessionId) {
+    mcpServers = servers;
+    renderMcpServers();
+  }
 });
-
-// Load MCP servers on startup
-loadMcpServers();
 
 // Settings Modal handling
 const settingsModal = document.getElementById("settings-modal");
