@@ -158,6 +158,11 @@ function spawnMcpPoller(sessionId: string, projectDir: string) {
   console.log(`[MCP Poller ${sessionId}] Starting polling loop`);
   const pollMcp = () => {
     if (mcpPollerPtyProcesses.has(sessionId)) {
+      // Notify renderer that polling is starting
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send("mcp-polling-started", sessionId);
+      }
+
       const command = `claude mcp list`;
       console.log(`[MCP Poller ${sessionId}] Running command: ${command}`);
       ptyProcess.write(command + "\r");
