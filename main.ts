@@ -14,6 +14,7 @@ const execAsync = promisify(exec);
 interface SessionConfig {
   projectDir: string;
   parentBranch: string;
+  branchName?: string;
   codingAgent: string;
   skipPermissions: boolean;
   setupCommands?: string[];
@@ -343,14 +344,21 @@ async function ensureFleetcodeExcluded(projectDir: string) {
   }
 }
 
-async function createWorktree(projectDir: string, parentBranch: string, sessionNumber: number, sessionUuid: string): Promise<string> {
+async function createWorktree(projectDir: string, parentBranch: string, sessionNumber: number, sessionUuid: string, customBranchName?: string): Promise<string> {
   const git = simpleGit(projectDir);
   const fleetcodeDir = path.join(projectDir, ".fleetcode");
   const worktreeName = `session${sessionNumber}`;
   const worktreePath = path.join(fleetcodeDir, worktreeName);
-  // Include short UUID to ensure branch uniqueness across deletes/recreates
-  const shortUuid = sessionUuid.split('-')[0];
-  const branchName = `fleetcode/session${sessionNumber}-${shortUuid}`;
+
+  // Use custom branch name if provided, otherwise generate default
+  let branchName: string;
+  if (customBranchName) {
+    branchName = customBranchName;
+  } else {
+    // Include short UUID to ensure branch uniqueness across deletes/recreates
+    const shortUuid = sessionUuid.split('-')[0];
+    branchName = `fleetcode/session${sessionNumber}-${shortUuid}`;
+  }
 
   // Create .fleetcode directory if it doesn't exist
   if (!fs.existsSync(fleetcodeDir)) {
@@ -434,7 +442,9 @@ ipcMain.on("create-session", async (event, config: SessionConfig) => {
   try {
     const sessionNumber = getNextSessionNumber();
     const sessionId = `session-${Date.now()}`;
-    const sessionName = `Session ${sessionNumber}`;
+
+    // Use custom branch name as session name if provided, otherwise default
+    const sessionName = config.branchName || `Session ${sessionNumber}`;
 
     // Generate UUID for this session (before creating worktree)
     const sessionUuid = uuidv4();
@@ -442,8 +452,8 @@ ipcMain.on("create-session", async (event, config: SessionConfig) => {
     // Ensure .fleetcode is excluded (async, don't wait)
     ensureFleetcodeExcluded(config.projectDir);
 
-    // Create git worktree with unique branch name
-    const worktreePath = await createWorktree(config.projectDir, config.parentBranch, sessionNumber, sessionUuid);
+    // Create git worktree with custom or default branch name
+    const worktreePath = await createWorktree(config.projectDir, config.parentBranch, sessionNumber, sessionUuid, config.branchName);
 
     // Extract and write MCP config
     const mcpServers = extractProjectMcpConfig(config.projectDir);

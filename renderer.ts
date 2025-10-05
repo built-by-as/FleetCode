@@ -5,6 +5,7 @@ import { FitAddon } from "xterm-addon-fit";
 interface SessionConfig {
   projectDir: string;
   parentBranch: string;
+  branchName?: string;
   codingAgent: string;
   skipPermissions: boolean;
   setupCommands?: string[];
@@ -761,6 +762,7 @@ ipcRenderer.on("session-created", (_event, sessionId: string, persistedSession: 
   const modal = document.getElementById("config-modal");
   const projectDirInput = document.getElementById("project-dir") as HTMLInputElement;
   const parentBranchSelect = document.getElementById("parent-branch") as HTMLSelectElement;
+  const branchNameInput = document.getElementById("branch-name") as HTMLInputElement;
   const setupCommandsTextarea = document.getElementById("setup-commands") as HTMLTextAreaElement;
 
   if (createBtn) {
@@ -775,6 +777,9 @@ ipcRenderer.on("session-created", (_event, sessionId: string, persistedSession: 
   projectDirInput.value = "";
   selectedDirectory = "";
   parentBranchSelect.innerHTML = '<option value="">Loading branches...</option>';
+  if (branchNameInput) {
+    branchNameInput.value = "";
+  }
   if (setupCommandsTextarea) {
     setupCommandsTextarea.value = "";
   }
@@ -934,9 +939,13 @@ createBtn?.addEventListener("click", () => {
     ? setupCommandsText.split("\n").filter(cmd => cmd.trim())
     : undefined;
 
+  const branchNameInput = document.getElementById("branch-name") as HTMLInputElement;
+  const branchName = branchNameInput?.value.trim() || undefined;
+
   const config: SessionConfig = {
     projectDir: selectedDirectory,
     parentBranch: parentBranchSelect.value,
+    branchName,
     codingAgent: codingAgentSelect.value,
     skipPermissions: codingAgentSelect.value === "claude" ? skipPermissionsCheckbox.checked : false,
     setupCommands,
