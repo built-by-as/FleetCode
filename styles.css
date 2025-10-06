@@ -83,6 +83,10 @@
     opacity: 1;
   }
 
+  .session-name-container {
+    min-width: 0;
+  }
+
   .session-name-text {
     cursor: pointer;
   }
