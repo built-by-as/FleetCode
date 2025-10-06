@@ -32,12 +32,12 @@
     "typescript": "^5.9.3"
   },
   "dependencies": {
+    "@xterm/addon-fit": "^0.10.0",
     "electron-store": "^11.0.0",
     "node-pty": "^1.0.0",
     "simple-git": "^3.28.0",
     "uuid": "^13.0.0",
-    "xterm": "^5.3.0",
-    "xterm-addon-fit": "^0.8.0"
+    "xterm": "^5.3.0"
   },
   "build": {
     "appId": "com.fleetcode.app",

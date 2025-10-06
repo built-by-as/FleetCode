@@ -1,6 +1,6 @@
 import { ipcRenderer } from "electron";
 import { Terminal } from "xterm";
-import { FitAddon } from "xterm-addon-fit";
+import { FitAddon } from "@xterm/addon-fit";
 
 interface SessionConfig {
   projectDir: string;
