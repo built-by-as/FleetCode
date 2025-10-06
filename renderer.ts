@@ -1,25 +1,7 @@
-import { ipcRenderer } from "electron";
-import { Terminal } from "xterm";
-import { FitAddon } from "@xterm/addon-fit";
-
-interface SessionConfig {
-  projectDir: string;
-  parentBranch: string;
-  branchName?: string;
-  codingAgent: string;
-  skipPermissions: boolean;
-  setupCommands?: string[];
-}
-
-interface PersistedSession {
-  id: string;
-  number: number;
-  name: string;
-  config: SessionConfig;
-  worktreePath: string;
-  createdAt: number;
-  sessionUuid: string;
-}
+import {FitAddon} from "@xterm/addon-fit";
+import {ipcRenderer} from "electron";
+import {Terminal} from "xterm";
+import {PersistedSession, SessionConfig} from "./types";
 
 interface Session {
   id: string;
@@ -252,7 +234,6 @@ function createTerminalUI(sessionId: string) {
   }
 
   term.open(sessionElement);
-  fitAddon.fit();
 
   term.onData((data) => {
     ipcRenderer.send("session-input", sessionId, data);
@@ -265,53 +246,13 @@ function createTerminalUI(sessionId: string) {
     }
   });
 
-  // Handle resize - only refit if dimensions actually changed
-  let lastCols = term.cols;
-  let lastRows = term.rows;
-  let resizeTimeout: NodeJS.Timeout | null = null;
-
   const resizeHandler = () => {
     if (activeSessionId === sessionId) {
-      // Clear any pending resize
-      if (resizeTimeout) {
-        clearTimeout(resizeTimeout);
+      const proposedDimensions = fitAddon.proposeDimensions();
+      if (proposedDimensions) {
+        fitAddon.fit();
+        ipcRenderer.send("session-resize", sessionId, proposedDimensions.cols, proposedDimensions.rows);
       }
-
-      // Debounce the fit call
-      resizeTimeout = setTimeout(() => {
-        // Calculate what the new dimensions would be
-        const container = sessionElement;
-        if (!container) return;
-
-        const rect = container.getBoundingClientRect();
-        const core = (term as any)._core;
-        if (!core) return;
-
-        // Estimate new dimensions based on container size
-        const newCols = Math.floor(rect.width / core._renderService.dimensions.actualCellWidth);
-        const newRows = Math.floor(rect.height / core._renderService.dimensions.actualCellHeight);
-
-        // Only fit if dimensions actually changed significantly (more than 1 char difference)
-        if (Math.abs(newCols - lastCols) > 1 || Math.abs(newRows - lastRows) > 1) {
-          // Save scroll position before fitting
-          const wasAtBottom = term.buffer.active.viewportY === term.buffer.active.baseY;
-          const savedScrollPosition = term.buffer.active.viewportY;
-
-          fitAddon.fit();
-
-          lastCols = term.cols;
-          lastRows = term.rows;
-
-          // Restore scroll position unless we were at the bottom (in which case stay at bottom)
-          if (!wasAtBottom && savedScrollPosition !== term.buffer.active.viewportY) {
-            term.scrollToLine(savedScrollPosition);
-          }
-
-          ipcRenderer.send("session-resize", sessionId, term.cols, term.rows);
-        }
-
-        resizeTimeout = null;
-      }, 100); // 100ms debounce
     }
   };
   window.addEventListener("resize", resizeHandler);
@@ -599,22 +540,8 @@ function switchToSession(sessionId: string) {
 
     // Focus and resize
     session.terminal.focus();
-    setTimeout(() => {
-      if (session.fitAddon && session.terminal) {
-        // Save scroll position before fitting
-        const wasAtBottom = session.terminal.buffer.active.viewportY === session.terminal.buffer.active.baseY;
-        const savedScrollPosition = session.terminal.buffer.active.viewportY;
-
-        session.fitAddon.fit();
-
-        // Restore scroll position unless we were at the bottom
-        if (!wasAtBottom && savedScrollPosition !== session.terminal.buffer.active.viewportY) {
-          session.terminal.scrollToLine(savedScrollPosition);
-        }
-
-        ipcRenderer.send("session-resize", sessionId, session.terminal.cols, session.terminal.rows);
-      }
-    }, 0);
+    // Dispatch resize event to trigger terminal resize
+    window.dispatchEvent(new Event("resize"));
   }
 }
 

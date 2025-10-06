@@ -1,35 +1,16 @@
-import { app, BrowserWindow, ipcMain, dialog } from "electron";
+import {exec} from "child_process";
+import {app, BrowserWindow, dialog, ipcMain} from "electron";
+import Store from "electron-store";
+import * as fs from "fs";
 import * as pty from "node-pty";
 import * as os from "os";
 import * as path from "path";
-import * as fs from "fs";
-import { simpleGit } from "simple-git";
-import Store from "electron-store";
-import { exec } from "child_process";
-import { promisify } from "util";
-import { v4 as uuidv4 } from "uuid";
+import {simpleGit} from "simple-git";
+import {promisify} from "util";
+import {v4 as uuidv4} from "uuid";
+import {PersistedSession, SessionConfig} from "./types";
 
 const execAsync = promisify(exec);
-
-interface SessionConfig {
-  projectDir: string;
-  parentBranch: string;
-  branchName?: string;
-  codingAgent: string;
-  skipPermissions: boolean;
-  setupCommands?: string[];
-}
-
-interface PersistedSession {
-  id: string;
-  number: number;
-  name: string;
-  config: SessionConfig;
-  worktreePath: string;
-  createdAt: number;
-  sessionUuid: string;
-  mcpConfigPath?: string;
-}
 
 let mainWindow: BrowserWindow;
 const activePtyProcesses = new Map<string, pty.IPty>();
@@ -344,10 +325,10 @@ async function ensureFleetcodeExcluded(projectDir: string) {
   }
 }
 
-async function createWorktree(projectDir: string, parentBranch: string, sessionNumber: number, sessionUuid: string, customBranchName?: string): Promise<string> {
+async function createWorktree(projectDir: string, parentBranch: string, sessionNumber: number, sessionUuid: string, customBranchName?: string): Promise<{ worktreePath: string; branchName: string }> {
   const git = simpleGit(projectDir);
   const fleetcodeDir = path.join(projectDir, ".fleetcode");
-  const worktreeName = `session${sessionNumber}`;
+  const worktreeName = customBranchName || `session${sessionNumber}`;
   const worktreePath = path.join(fleetcodeDir, worktreeName);
 
   // Use custom branch name if provided, otherwise generate default
@@ -357,7 +338,7 @@ async function createWorktree(projectDir: string, parentBranch: string, sessionN
   } else {
     // Include short UUID to ensure branch uniqueness across deletes/recreates
     const shortUuid = sessionUuid.split('-')[0];
-    branchName = `fleetcode/session${sessionNumber}-${shortUuid}`;
+    branchName = `fleetcode/${worktreeName}-${shortUuid}`;
   }
 
   // Create .fleetcode directory if it doesn't exist
@@ -385,7 +366,7 @@ async function createWorktree(projectDir: string, parentBranch: string, sessionN
   // This creates a new branch named "fleetcode/session<N>" starting from the parent branch
   await git.raw(["worktree", "add", "-b", branchName, worktreePath, parentBranch]);
 
-  return worktreePath;
+  return { worktreePath, branchName };
 }
 
 async function removeWorktree(projectDir: string, worktreePath: string) {
@@ -394,6 +375,15 @@ async function removeWorktree(projectDir: string, worktreePath: string) {
     await git.raw(["worktree", "remove", worktreePath, "--force"]);
   } catch (error) {
     console.error("Error removing worktree:", error);
+  }
+}
+
+async function removeGitBranch(projectDir: string, branchName: string) {
+  const git = simpleGit(projectDir);
+  try {
+    await git.raw(["branch", "-D", branchName]);
+  } catch (error) {
+    console.error("Error removing git branch:", error);
   }
 }
 
@@ -453,7 +443,7 @@ ipcMain.on("create-session", async (event, config: SessionConfig) => {
     ensureFleetcodeExcluded(config.projectDir);
 
     // Create git worktree with custom or default branch name
-    const worktreePath = await createWorktree(config.projectDir, config.parentBranch, sessionNumber, sessionUuid, config.branchName);
+    const { worktreePath, branchName } = await createWorktree(config.projectDir, config.parentBranch, sessionNumber, sessionUuid, config.branchName);
 
     // Extract and write MCP config
     const mcpServers = extractProjectMcpConfig(config.projectDir);
@@ -469,6 +459,7 @@ ipcMain.on("create-session", async (event, config: SessionConfig) => {
       createdAt: Date.now(),
       sessionUuid,
       mcpConfigPath: mcpConfigPath || undefined,
+      gitBranch: branchName,
     };
 
     // Save to store
@@ -571,6 +562,11 @@ ipcMain.on("delete-session", async (_event, sessionId: string) => {
 
   // Remove git worktree
   await removeWorktree(session.config.projectDir, session.worktreePath);
+
+  // Remove git branch if it exists
+  if (session.gitBranch) {
+    await removeGitBranch(session.config.projectDir, session.gitBranch);
+  }
 
   // Remove from store
   sessions.splice(sessionIndex, 1);
@@ -778,6 +774,7 @@ const createWindow = () => {
 app.whenReady().then(() => {
   createWindow();
 
+  // Handles launch from dock on macos
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) {
       createWindow();
