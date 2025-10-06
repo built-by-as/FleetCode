@@ -525,6 +525,10 @@ function switchToSession(sessionId: string) {
       mcpSection.style.display = "block";
     }
 
+    // Clear MCP servers from previous session and re-render
+    mcpServers = [];
+    renderMcpServers();
+
     // Load MCP servers for this session
     loadMcpServers();
 
