@@ -22,6 +22,33 @@ function getPersistedSessions(): PersistedSession[] {
   return (store as any).get("sessions", []);
 }
 
+function isTerminalReady(buffer: string, startPos: number = 0): boolean {
+  const searchBuffer = buffer.slice(startPos);
+  const promptSymbols = ["$ ", "% ", "> ", "➜ ", "➜  ", "✗ ", "✓ "];
+  const endSymbols = ["$", "%", ">", "➜", "✗", "✓"];
+
+  // Check for bracketed paste mode
+  if (searchBuffer.includes("\x1b[?2004h")) {
+    return true;
+  }
+
+  // Check for prompt symbols
+  for (const symbol of promptSymbols) {
+    if (searchBuffer.includes(symbol)) {
+      return true;
+    }
+  }
+
+  // Check for end symbols
+  for (const symbol of endSymbols) {
+    if (searchBuffer.endsWith(symbol)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
 function savePersistedSessions(sessions: PersistedSession[]) {
   (store as any).set("sessions", sessions);
 }
@@ -220,6 +247,9 @@ function spawnSessionPty(
   activePtyProcesses.set(sessionId, ptyProcess);
 
   let terminalReady = false;
+  let readyChecksCompleted = 0;
+  let lastReadyCheckPos = 0;
+  let setupCommandsIdx = 0;
   let dataBuffer = "";
 
   ptyProcess.onData((data) => {
@@ -232,44 +262,34 @@ function spawnSessionPty(
     if (!terminalReady) {
       dataBuffer += data;
 
-      // Method 1: Look for bracketed paste mode enable sequence
-      // Method 2: Fallback - look for common prompt indicators
-      const isReady = dataBuffer.includes("\x1b[?2004h") ||
-        dataBuffer.includes("$ ") || dataBuffer.includes("% ") ||
-        dataBuffer.includes("> ") || dataBuffer.includes("➜ ") ||
-        dataBuffer.includes("➜  ") || dataBuffer.includes("✗ ") ||
-        dataBuffer.includes("✓ ") || dataBuffer.endsWith("$") ||
-        dataBuffer.endsWith("%") || dataBuffer.endsWith(">") ||
-        dataBuffer.endsWith("➜") || dataBuffer.endsWith("✗") ||
-        dataBuffer.endsWith("✓");
+      if (isTerminalReady(dataBuffer, lastReadyCheckPos)) {
+        readyChecksCompleted++;
+        lastReadyCheckPos = dataBuffer.length;
 
-      if (isReady) {
-        terminalReady = true;
+        if (config.setupCommands && setupCommandsIdx < config.setupCommands.length) {
+          ptyProcess.write(config.setupCommands[setupCommandsIdx] + "\r");
+          setupCommandsIdx++;
+        } else {
+          terminalReady = true;
 
-        // Run setup commands if provided
-        if (config.setupCommands && config.setupCommands.length > 0) {
-          config.setupCommands.forEach(cmd => {
-            ptyProcess.write(cmd + "\r");
-          });
-        }
+          // Auto-run the selected coding agent
+          if (config.codingAgent === "claude") {
+            const sessionFlag = isNewSession
+              ? `--session-id ${sessionUuid}`
+              : `--resume ${sessionUuid}`;
+            const skipPermissionsFlag = config.skipPermissions ? "--dangerously-skip-permissions" : "";
+            const mcpConfigFlag = mcpConfigPath ? `--mcp-config ${mcpConfigPath}` : "";
+            const flags = [sessionFlag, skipPermissionsFlag, mcpConfigFlag].filter(f => f).join(" ");
+            const claudeCmd = `claude ${flags}\r`;
+            ptyProcess.write(claudeCmd);
 
-        // Auto-run the selected coding agent
-        if (config.codingAgent === "claude") {
-          const sessionFlag = isNewSession
-            ? `--session-id ${sessionUuid}`
-            : `--resume ${sessionUuid}`;
-          const skipPermissionsFlag = config.skipPermissions ? "--dangerously-skip-permissions" : "";
-          const mcpConfigFlag = mcpConfigPath ? `--mcp-config ${mcpConfigPath}` : "";
-          const flags = [sessionFlag, skipPermissionsFlag, mcpConfigFlag].filter(f => f).join(" ");
-          const claudeCmd = `claude ${flags}\r`;
-          ptyProcess.write(claudeCmd);
-
-          // Start MCP poller immediately (auth is handled by shell environment)
-          if (!mcpPollerPtyProcesses.has(sessionId) && projectDir) {
-            spawnMcpPoller(sessionId, projectDir);
+            // Start MCP poller immediately (auth is handled by shell environment)
+            if (!mcpPollerPtyProcesses.has(sessionId) && projectDir) {
+              spawnMcpPoller(sessionId, projectDir);
+            }
+          } else if (config.codingAgent === "codex") {
+            ptyProcess.write("codex\r");
           }
-        } else if (config.codingAgent === "codex") {
-          ptyProcess.write("codex\r");
         }
       }
     }
