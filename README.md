@@ -86,6 +86,16 @@ xattr -cr /path/to/FleetCode.app
 
 This removes the quarantine attribute that prevents the app from opening.
 
+### Claude Code: Working Directory Issues
+
+If you're using Claude Code and it's reading/writing files from the wrong directory instead of the worktree, disable "Auto connect to IDE" in your Claude Code settings:
+
+```bash
+claude config
+```
+
+Set `autoConnectToIde` to `false`. This ensures Claude Code operates within the correct worktree directory.
+
 ## License
 
 ISC
