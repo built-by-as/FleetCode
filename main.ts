@@ -129,8 +129,8 @@ function spawnMcpPoller(sessionId: string, projectDir: string) {
 
     // Parse output whenever we have MCP server entries
     // Match lines like: "servername: url (type) - ✓ Connected" or "servername: command (stdio) - ✓ Connected"
-    // Pattern handles both SSE (with URLs) and stdio (with commands/paths)
-    const mcpServerLineRegex = /^[\w-]+:.+\((?:SSE|stdio)\)\s+-\s+[✓⚠]/m;
+    // Pattern handles SSE, stdio, and HTTP types
+    const mcpServerLineRegex = /^[\w-]+:.+\((?:SSE|stdio|HTTP)\)\s+-\s+[✓⚠]/m;
 
     if (mcpServerLineRegex.test(data) || data.includes("No MCP servers configured")) {
       console.log(`[MCP Poller ${sessionId}] MCP output detected, parsing...`);
@@ -209,8 +209,8 @@ function parseMcpOutput(output: string): any[] {
     }
 
     // Only parse lines that match the MCP server format
-    // Must have: "name: something (SSE|stdio) - status"
-    const serverMatch = line.match(/^([\w-]+):.+\((?:SSE|stdio)\)\s+-\s+[✓⚠]/);
+    // Must have: "name: something (SSE|stdio|HTTP) - status"
+    const serverMatch = line.match(/^([\w-]+):.+\((?:SSE|stdio|HTTP)\)\s+-\s+[✓⚠]/);
     if (serverMatch) {
       const serverName = serverMatch[1];
       const isConnected = line.includes("✓") || line.includes("Connected");
