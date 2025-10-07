@@ -67,12 +67,12 @@ function writeMcpConfigFile(projectDir: string, mcpServers: any): string | null 
     const crypto = require("crypto");
     const hash = crypto.createHash("md5").update(projectDir).digest("hex").substring(0, 8);
 
-    const fleetcodeDir = path.join(projectDir, ".fleetcode");
-    if (!fs.existsSync(fleetcodeDir)) {
-      fs.mkdirSync(fleetcodeDir, { recursive: true });
+    const worktreesDir = path.join(os.homedir(), "worktrees");
+    if (!fs.existsSync(worktreesDir)) {
+      fs.mkdirSync(worktreesDir, { recursive: true });
     }
 
-    const configFilePath = path.join(fleetcodeDir, `mcp-config-${hash}.json`);
+    const configFilePath = path.join(worktreesDir, `mcp-config-${hash}.json`);
     const configContent = JSON.stringify({ mcpServers }, null, 2);
 
     fs.writeFileSync(configFilePath, configContent, "utf8");
@@ -268,49 +268,19 @@ function spawnSessionPty(
 }
 
 // Git worktree helper functions
-async function ensureFleetcodeExcluded(projectDir: string) {
-  // Check if we've already initialized this project (persisted across app restarts)
-  const initializedProjects: string[] = (store as any).get("excludeInitializedProjects", []);
-  if (initializedProjects.includes(projectDir)) {
-    return;
-  }
-
-  const excludeFilePath = path.join(projectDir, ".git", "info", "exclude");
-  const excludeEntry = ".fleetcode/";
-
-  try {
-    // Ensure .git/info directory exists
-    const infoDir = path.dirname(excludeFilePath);
-    if (!fs.existsSync(infoDir)) {
-      fs.mkdirSync(infoDir, { recursive: true });
-    }
-
-    // Read existing exclude file or create empty string
-    let excludeContent = "";
-    if (fs.existsSync(excludeFilePath)) {
-      excludeContent = fs.readFileSync(excludeFilePath, "utf-8");
-    }
-
-    // Check if .fleetcode/ is already excluded
-    if (!excludeContent.includes(excludeEntry)) {
-      // Add .fleetcode/ to exclude file
-      const newContent = excludeContent.trim() + (excludeContent.trim() ? "\n" : "") + excludeEntry + "\n";
-      fs.writeFileSync(excludeFilePath, newContent, "utf-8");
-    }
-
-    // Mark this project as initialized and persist
-    initializedProjects.push(projectDir);
-    (store as any).set("excludeInitializedProjects", initializedProjects);
-  } catch (error) {
-    console.error("Error ensuring .fleetcode excluded:", error);
-  }
-}
+// No longer needed since worktrees are in ~/worktrees, not in project directory
 
 async function createWorktree(projectDir: string, parentBranch: string, sessionNumber: number, sessionUuid: string, customBranchName?: string): Promise<{ worktreePath: string; branchName: string }> {
   const git = simpleGit(projectDir);
-  const fleetcodeDir = path.join(projectDir, ".fleetcode");
+
+  // Create a hash of the project directory for unique worktree directory
+  const crypto = require("crypto");
+  const hash = crypto.createHash("md5").update(projectDir).digest("hex").substring(0, 8);
+
+  const worktreesBaseDir = path.join(os.homedir(), "worktrees");
+  const projectWorktreeDir = path.join(worktreesBaseDir, hash);
   const worktreeName = customBranchName || `session${sessionNumber}`;
-  const worktreePath = path.join(fleetcodeDir, worktreeName);
+  const worktreePath = path.join(projectWorktreeDir, worktreeName);
 
   // Use custom branch name if provided, otherwise generate default
   let branchName: string;
@@ -322,9 +292,9 @@ async function createWorktree(projectDir: string, parentBranch: string, sessionN
     branchName = `fleetcode/${worktreeName}-${shortUuid}`;
   }
 
-  // Create .fleetcode directory if it doesn't exist
-  if (!fs.existsSync(fleetcodeDir)) {
-    fs.mkdirSync(fleetcodeDir, { recursive: true });
+  // Create worktrees directory if it doesn't exist
+  if (!fs.existsSync(projectWorktreeDir)) {
+    fs.mkdirSync(projectWorktreeDir, { recursive: true });
   }
 
   // Check if worktree already exists and remove it
@@ -419,9 +389,6 @@ ipcMain.on("create-session", async (event, config: SessionConfig) => {
 
     // Generate UUID for this session (before creating worktree)
     const sessionUuid = uuidv4();
-
-    // Ensure .fleetcode is excluded (async, don't wait)
-    ensureFleetcodeExcluded(config.projectDir);
 
     // Create git worktree with custom or default branch name
     const { worktreePath, branchName } = await createWorktree(config.projectDir, config.parentBranch, sessionNumber, sessionUuid, config.branchName);
