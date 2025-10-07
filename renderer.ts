@@ -341,7 +341,7 @@ function addToSidebar(sessionId: string, name: string, hasActivePty: boolean) {
       <div class="flex-1 min-w-0">
         <span class="truncate session-name-text block" data-id="${sessionId}">${name}</span>
         <input type="text" class="session-name-input hidden" data-id="${sessionId}" value="${name}" />
-        <span class="session-worktree-path text-xs text-gray-500 truncate block">${worktreePath}</span>
+        <span class="session-worktree-path text-xs text-gray-500 block break-all">${worktreePath}</span>
       </div>
     </div>
     <button class="session-delete-btn" data-id="${sessionId}" title="Delete session">×</button>

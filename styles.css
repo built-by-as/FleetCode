@@ -101,7 +101,8 @@
   }
 
   .session-worktree-path {
-    @apply text-xs text-gray-500 truncate block mt-0.5;
+    @apply text-xs text-gray-500 block mt-0.5;
+    word-break: break-all;
   }
 
   /* Tabs */
