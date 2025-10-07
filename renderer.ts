@@ -30,6 +30,7 @@ interface TerminalSettings {
   fontSize: number;
   theme: string; // Theme preset name
   cursorBlink: boolean;
+  worktreeDir: string;
 }
 
 interface ThemeColors {
@@ -203,6 +204,7 @@ const DEFAULT_SETTINGS: TerminalSettings = {
   fontSize: 11,
   theme: getSystemTheme() === "dark" ? "macos-dark" : "macos-light",
   cursorBlink: false,
+  worktreeDir: require("path").join(require("os").homedir(), "worktrees"),
 };
 
 const sessions = new Map<string, Session>();
@@ -1217,6 +1219,8 @@ const settingsTheme = document.getElementById("settings-theme") as HTMLSelectEle
 const settingsFontFamily = document.getElementById("settings-font-family") as HTMLSelectElement;
 const settingsFontSize = document.getElementById("settings-font-size") as HTMLInputElement;
 const settingsCursorBlink = document.getElementById("settings-cursor-blink") as HTMLInputElement;
+const settingsWorktreeDir = document.getElementById("settings-worktree-dir") as HTMLInputElement;
+const browseWorktreeDirBtn = document.getElementById("browse-worktree-dir");
 
 // Load saved settings on startup
 async function loadSettings() {
@@ -1243,6 +1247,7 @@ function populateSettingsForm() {
 
   settingsFontSize.value = terminalSettings.fontSize.toString();
   settingsCursorBlink.checked = terminalSettings.cursorBlink;
+  settingsWorktreeDir.value = terminalSettings.worktreeDir;
 }
 
 // Apply settings to all existing terminals
@@ -1281,6 +1286,14 @@ resetSettingsBtn?.addEventListener("click", () => {
   populateSettingsForm();
 });
 
+// Browse worktree directory
+browseWorktreeDirBtn?.addEventListener("click", async () => {
+  const dir = await ipcRenderer.invoke("select-directory");
+  if (dir) {
+    settingsWorktreeDir.value = dir;
+  }
+});
+
 // Save settings
 saveSettingsBtn?.addEventListener("click", async () => {
   // Read values from form
@@ -1288,6 +1301,7 @@ saveSettingsBtn?.addEventListener("click", async () => {
   terminalSettings.fontFamily = settingsFontFamily.value || DEFAULT_SETTINGS.fontFamily;
   terminalSettings.fontSize = parseInt(settingsFontSize.value) || DEFAULT_SETTINGS.fontSize;
   terminalSettings.cursorBlink = settingsCursorBlink.checked;
+  terminalSettings.worktreeDir = settingsWorktreeDir.value || DEFAULT_SETTINGS.worktreeDir;
 
   // Save to electron-store
   await ipcRenderer.invoke("save-terminal-settings", terminalSettings);

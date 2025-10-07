@@ -22,6 +22,14 @@ function getPersistedSessions(): PersistedSession[] {
   return (store as any).get("sessions", []);
 }
 
+function getWorktreeBaseDir(): string {
+  const settings = (store as any).get("terminalSettings");
+  if (settings && settings.worktreeDir) {
+    return settings.worktreeDir;
+  }
+  return path.join(os.homedir(), "worktrees");
+}
+
 function isTerminalReady(buffer: string, startPos: number = 0): boolean {
   const searchBuffer = buffer.slice(startPos);
 
@@ -63,7 +71,7 @@ function extractProjectMcpConfig(projectDir: string): any {
 // Get a safe directory name from project path, with collision handling
 function getProjectWorktreeDirName(projectDir: string): string {
   const baseName = path.basename(projectDir);
-  const worktreesBaseDir = path.join(os.homedir(), "worktrees");
+  const worktreesBaseDir = getWorktreeBaseDir();
   const candidatePath = path.join(worktreesBaseDir, baseName);
 
   // If directory doesn't exist or points to the same project, use base name
@@ -90,7 +98,7 @@ function getProjectWorktreeDirName(projectDir: string): string {
 function writeMcpConfigFile(projectDir: string, mcpServers: any): string | null {
   try {
     const projectDirName = getProjectWorktreeDirName(projectDir);
-    const worktreesDir = path.join(os.homedir(), "worktrees");
+    const worktreesDir = getWorktreeBaseDir();
     if (!fs.existsSync(worktreesDir)) {
       fs.mkdirSync(worktreesDir, { recursive: true });
     }
@@ -303,7 +311,7 @@ async function createWorktree(projectDir: string, parentBranch: string, sessionN
   const git = simpleGit(projectDir);
 
   const projectDirName = getProjectWorktreeDirName(projectDir);
-  const worktreesBaseDir = path.join(os.homedir(), "worktrees");
+  const worktreesBaseDir = getWorktreeBaseDir();
   const projectWorktreeDir = path.join(worktreesBaseDir, projectDirName);
   const worktreeName = customBranchName || `session${sessionNumber}`;
   const worktreePath = path.join(projectWorktreeDir, worktreeName);
