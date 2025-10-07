@@ -24,29 +24,8 @@ function getPersistedSessions(): PersistedSession[] {
 
 function isTerminalReady(buffer: string, startPos: number = 0): boolean {
   const searchBuffer = buffer.slice(startPos);
-  const promptSymbols = ["$ ", "% ", "> ", "➜ ", "➜  ", "✗ ", "✓ "];
-  const endSymbols = ["$", "%", ">", "➜", "✗", "✓"];
 
-  // Check for bracketed paste mode
-  if (searchBuffer.includes("\x1b[?2004h")) {
-    return true;
-  }
-
-  // Check for prompt symbols
-  for (const symbol of promptSymbols) {
-    if (searchBuffer.includes(symbol)) {
-      return true;
-    }
-  }
-
-  // Check for end symbols
-  for (const symbol of endSymbols) {
-    if (searchBuffer.endsWith(symbol)) {
-      return true;
-    }
-  }
-
-  return false;
+  return searchBuffer.includes("\x1b[?2004h", startPos);
 }
 
 function savePersistedSessions(sessions: PersistedSession[]) {
@@ -107,7 +86,6 @@ function writeMcpConfigFile(projectDir: string, mcpServers: any): string | null 
 
 // Spawn headless PTY for MCP polling
 function spawnMcpPoller(sessionId: string, projectDir: string) {
-  console.log(`[MCP Poller] Spawning for session ${sessionId}, project dir: ${projectDir}`);
   const shell = os.platform() === "darwin" ? "zsh" : "bash";
   const ptyProcess = pty.spawn(shell, ["-l"], {
     name: "xterm-color",
@@ -125,7 +103,6 @@ function spawnMcpPoller(sessionId: string, projectDir: string) {
   ptyProcess.onData((data) => {
     // Accumulate output without displaying it
     outputBuffer += data;
-    console.log(`[MCP Poller ${sessionId}] Data:`, data.substring(0, 100));
 
     // Parse output whenever we have MCP server entries
     // Match lines like: "servername: url (type) - ✓ Connected" or "servername: command (stdio) - ✓ Connected"
@@ -133,10 +110,8 @@ function spawnMcpPoller(sessionId: string, projectDir: string) {
     const mcpServerLineRegex = /^[\w-]+:.+\((?:SSE|stdio|HTTP)\)\s+-\s+[✓⚠]/m;
 
     if (mcpServerLineRegex.test(data) || data.includes("No MCP servers configured")) {
-      console.log(`[MCP Poller ${sessionId}] MCP output detected, parsing...`);
       try {
         const servers = parseMcpOutput(outputBuffer);
-        console.log(`[MCP Poller ${sessionId}] Parsed servers:`, servers);
 
         // Merge servers into the map (upsert by name)
         servers.forEach(server => {
@@ -144,11 +119,9 @@ function spawnMcpPoller(sessionId: string, projectDir: string) {
         });
 
         const allServers = Array.from(serverMap.values());
-        console.log(`[MCP Poller ${sessionId}] Total servers:`, allServers);
 
         if (mainWindow && !mainWindow.isDestroyed()) {
           mainWindow.webContents.send("mcp-servers-updated", sessionId, allServers);
-          console.log(`[MCP Poller ${sessionId}] Sent mcp-servers-updated event`);
         }
       } catch (error) {
         console.error(`[MCP Poller ${sessionId}] Error parsing:`, error);
@@ -158,13 +131,11 @@ function spawnMcpPoller(sessionId: string, projectDir: string) {
     // Clear buffer when we see the shell prompt (command finished)
     if ((data.includes("% ") || data.includes("$ ") || data.includes("➜ ")) &&
         outputBuffer.includes("claude mcp list")) {
-      console.log(`[MCP Poller ${sessionId}] Command complete, clearing buffer`);
       outputBuffer = "";
     }
   });
 
   // Start polling immediately and then every 60 seconds
-  console.log(`[MCP Poller ${sessionId}] Starting polling loop`);
   const pollMcp = () => {
     if (mcpPollerPtyProcesses.has(sessionId)) {
       // Notify renderer that polling is starting
@@ -173,11 +144,8 @@ function spawnMcpPoller(sessionId: string, projectDir: string) {
       }
 
       const command = `claude mcp list`;
-      console.log(`[MCP Poller ${sessionId}] Running command: ${command}`);
       ptyProcess.write(command + "\r");
       setTimeout(pollMcp, 60000);
-    } else {
-      console.log(`[MCP Poller ${sessionId}] No longer active, stopping`);
     }
   };
 
@@ -267,7 +235,8 @@ function spawnSessionPty(
         lastReadyCheckPos = dataBuffer.length;
 
         if (config.setupCommands && setupCommandsIdx < config.setupCommands.length) {
-          ptyProcess.write(config.setupCommands[setupCommandsIdx] + "\r");
+          const cmd = config.setupCommands[setupCommandsIdx];
+          ptyProcess.write(cmd + "\r");
           setupCommandsIdx++;
         } else {
           terminalReady = true;
@@ -280,8 +249,8 @@ function spawnSessionPty(
             const skipPermissionsFlag = config.skipPermissions ? "--dangerously-skip-permissions" : "";
             const mcpConfigFlag = mcpConfigPath ? `--mcp-config ${mcpConfigPath}` : "";
             const flags = [sessionFlag, skipPermissionsFlag, mcpConfigFlag].filter(f => f).join(" ");
-            const claudeCmd = `claude ${flags}\r`;
-            ptyProcess.write(claudeCmd);
+            const claudeCmd = `claude ${flags}`;
+            ptyProcess.write(claudeCmd + "\r");
 
             // Start MCP poller immediately (auth is handled by shell environment)
             if (!mcpPollerPtyProcesses.has(sessionId) && projectDir) {
