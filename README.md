@@ -74,25 +74,17 @@ Configure Model Context Protocol servers for enhanced agent capabilities:
 - **stdio**: Direct process communication
 - **SSE**: Server-sent events via HTTP
 
-## Project Structure
+## Troubleshooting
 
+### macOS: "App can't be opened because it is from an unidentified developer"
+
+If you encounter a quarantine warning when trying to open the app on macOS, run:
+
+```bash
+xattr -cr /path/to/FleetCode.app
 ```
-FleetCode/
-├── main.ts          # Main Electron process (PTY management, git operations)
-├── renderer.ts      # Renderer process (UI, terminal instances)
-├── index.html       # Application layout
-├── styles.css       # Tailwind CSS styles
-└── dist/            # Compiled output
-```
 
-## Technology Stack
-
-- **Electron**: Desktop application framework
-- **xterm.js**: Terminal emulator
-- **node-pty**: PTY (pseudo-terminal) spawning
-- **simple-git**: Git operations (worktree management)
-- **electron-store**: Persistent configuration storage
-- **Tailwind CSS**: Styling
+This removes the quarantine attribute that prevents the app from opening.
 
 ## License
 
