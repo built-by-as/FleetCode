@@ -220,7 +220,6 @@ function spawnSessionPty(
   activePtyProcesses.set(sessionId, ptyProcess);
 
   let terminalReady = false;
-  let claudeReady = false;
   let dataBuffer = "";
 
   ptyProcess.onData((data) => {
@@ -264,20 +263,13 @@ function spawnSessionPty(
           const flags = [sessionFlag, skipPermissionsFlag, mcpConfigFlag].filter(f => f).join(" ");
           const claudeCmd = `claude ${flags}\r`;
           ptyProcess.write(claudeCmd);
+
+          // Start MCP poller immediately (auth is handled by shell environment)
+          if (!mcpPollerPtyProcesses.has(sessionId) && projectDir) {
+            spawnMcpPoller(sessionId, projectDir);
+          }
         } else if (config.codingAgent === "codex") {
           ptyProcess.write("codex\r");
-        }
-      }
-    }
-
-    // Detect when Claude is ready (shows "> " prompt)
-    if (terminalReady && !claudeReady && config.codingAgent === "claude") {
-      if (data.includes("> ")) {
-        claudeReady = true;
-        // Spawn MCP poller now that Claude is authenticated and ready
-        // Check if poller doesn't already exist to prevent duplicates
-        if (!mcpPollerPtyProcesses.has(sessionId) && projectDir) {
-          spawnMcpPoller(sessionId, projectDir);
         }
       }
     }
