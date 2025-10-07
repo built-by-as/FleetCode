@@ -949,7 +949,7 @@ function renderMcpServers() {
       e.stopPropagation();
       if (confirm(`Remove MCP server "${server.name}"?`)) {
         try {
-          await ipcRenderer.invoke("remove-mcp-server", server.name);
+          await ipcRenderer.invoke("remove-mcp-server", activeSessionId, server.name);
           await loadMcpServers();
         } catch (error) {
           alert(`Failed to remove server: ${error}`);
@@ -978,7 +978,7 @@ async function showMcpServerDetails(name: string) {
   detailsModal?.classList.remove("hidden");
 
   try {
-    const details = await ipcRenderer.invoke("get-mcp-server-details", name);
+    const details = await ipcRenderer.invoke("get-mcp-server-details", activeSessionId, name);
 
     if (detailsContent) {
       let html = "";
@@ -1139,7 +1139,7 @@ addMcpBtn?.addEventListener("click", async () => {
   addMcpBtn.classList.add("opacity-50", "cursor-not-allowed");
 
   try {
-    await ipcRenderer.invoke("add-mcp-server", name, config);
+    await ipcRenderer.invoke("add-mcp-server", activeSessionId, name, config);
     await loadMcpServers();
     mcpModal?.classList.add("hidden");
   } catch (error) {
@@ -1168,7 +1168,7 @@ removeMcpDetailsBtn?.addEventListener("click", async () => {
 
   if (confirm(`Remove MCP server "${serverName}"?`)) {
     try {
-      await ipcRenderer.invoke("remove-mcp-server", serverName);
+      await ipcRenderer.invoke("remove-mcp-server", activeSessionId, serverName);
       mcpDetailsModal?.classList.add("hidden");
       await loadMcpServers();
     } catch (error) {

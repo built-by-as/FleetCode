@@ -631,23 +631,55 @@ async function listMcpServers() {
   }
 }
 
-async function addMcpServer(name: string, config: any) {
+// Helper to execute command in MCP poller PTY and wait for completion
+function executeInMcpPoller(sessionId: string, command: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const mcpPoller = mcpPollerPtyProcesses.get(sessionId);
+    if (!mcpPoller) {
+      reject(new Error("No active MCP poller for this session"));
+      return;
+    }
+
+    let output = "";
+    const timeout = setTimeout(() => {
+      dataHandler && mcpPoller.off("data", dataHandler);
+      reject(new Error("Command timeout"));
+    }, 10000);
+
+    const dataHandler = (data: string) => {
+      output += data;
+      // Check if command completed (prompt returned)
+      if (data.includes("% ") || data.includes("$ ") || data.includes("➜ ")) {
+        clearTimeout(timeout);
+        mcpPoller.off("data", dataHandler);
+        resolve(output);
+      }
+    };
+
+    mcpPoller.on("data", dataHandler);
+    mcpPoller.write(command + "\r");
+  });
+}
+
+async function addMcpServer(sessionId: string, name: string, config: any) {
   // Use add-json to support full configuration including env vars, headers, etc.
-  const jsonConfig = JSON.stringify(config);
-  await execAsync(`claude mcp add-json --scope user "${name}" '${jsonConfig}'`);
+  const jsonConfig = JSON.stringify(config).replace(/'/g, "'\\''"); // Escape single quotes for shell
+  const command = `claude mcp add-json --scope user "${name}" '${jsonConfig}'`;
+  await executeInMcpPoller(sessionId, command);
 }
 
-async function removeMcpServer(name: string) {
-  await execAsync(`claude mcp remove "${name}"`);
+async function removeMcpServer(sessionId: string, name: string) {
+  const command = `claude mcp remove "${name}"`;
+  await executeInMcpPoller(sessionId, command);
 }
 
-async function getMcpServerDetails(name: string) {
+async function getMcpServerDetails(sessionId: string, name: string) {
   try {
-    const { stdout } = await execAsync(`claude mcp get "${name}"`);
+    const output = await executeInMcpPoller(sessionId, `claude mcp get "${name}"`);
 
     // Parse the output to extract details
     const details: any = { name };
-    const lines = stdout.split("\n");
+    const lines = output.split("\n");
 
     for (const line of lines) {
       const trimmed = line.trim();
@@ -688,27 +720,27 @@ ipcMain.handle("list-mcp-servers", async (_event, sessionId: string) => {
   }
 });
 
-ipcMain.handle("add-mcp-server", async (_event, name: string, config: any) => {
+ipcMain.handle("add-mcp-server", async (_event, sessionId: string, name: string, config: any) => {
   try {
-    await addMcpServer(name, config);
+    await addMcpServer(sessionId, name, config);
   } catch (error) {
     console.error("Error adding MCP server:", error);
     throw error;
   }
 });
 
-ipcMain.handle("remove-mcp-server", async (_event, name: string) => {
+ipcMain.handle("remove-mcp-server", async (_event, sessionId: string, name: string) => {
   try {
-    await removeMcpServer(name);
+    await removeMcpServer(sessionId, name);
   } catch (error) {
     console.error("Error removing MCP server:", error);
     throw error;
   }
 });
 
-ipcMain.handle("get-mcp-server-details", async (_event, name: string) => {
+ipcMain.handle("get-mcp-server-details", async (_event, sessionId: string, name: string) => {
   try {
-    return await getMcpServerDetails(name);
+    return await getMcpServerDetails(sessionId, name);
   } catch (error) {
     console.error("Error getting MCP server details:", error);
     throw error;
