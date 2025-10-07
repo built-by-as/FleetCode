@@ -100,6 +100,10 @@
     min-width: 80px;
   }
 
+  .session-worktree-path {
+    @apply text-xs text-gray-500 truncate block mt-0.5;
+  }
+
   /* Tabs */
   .tabs-container {
     @apply flex bg-gray-900 border-b border-gray-700 overflow-x-auto;
