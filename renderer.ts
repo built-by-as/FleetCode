@@ -638,6 +638,11 @@ function deleteSession(sessionId: string) {
       switchToSession(remainingSessions[0].id);
     } else {
       activeSessionId = null;
+      // Hide MCP section when no sessions are active
+      const mcpSection = document.getElementById("mcp-section");
+      if (mcpSection) {
+        mcpSection.style.display = "none";
+      }
     }
   }
 }
