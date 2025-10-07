@@ -329,20 +329,14 @@ function addToSidebar(sessionId: string, name: string, hasActivePty: boolean) {
   const list = document.getElementById("session-list");
   if (!list) return;
 
-  const session = sessions.get(sessionId);
-  const worktreePath = session?.worktreePath || '';
-
   const item = document.createElement("div");
   item.id = `sidebar-${sessionId}`;
   item.className = "session-list-item";
   item.innerHTML = `
     <div class="flex items-center space-x-2 flex-1 session-name-container">
       <span class="session-indicator ${hasActivePty ? 'active' : ''}"></span>
-      <div class="flex-1 min-w-0">
-        <span class="truncate session-name-text block" data-id="${sessionId}">${name}</span>
-        <input type="text" class="session-name-input hidden" data-id="${sessionId}" value="${name}" />
-        <span class="session-worktree-path text-xs text-gray-500 truncate block">${worktreePath}</span>
-      </div>
+      <span class="truncate session-name-text" data-id="${sessionId}">${name}</span>
+      <input type="text" class="session-name-input hidden" data-id="${sessionId}" value="${name}" />
     </div>
     <button class="session-delete-btn" data-id="${sessionId}" title="Delete session">×</button>
   `;
