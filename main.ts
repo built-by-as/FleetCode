@@ -60,20 +60,49 @@ function extractProjectMcpConfig(projectDir: string): any {
   }
 }
 
+// Get a safe directory name from project path, with collision handling
+function getProjectWorktreeDirName(projectDir: string): string {
+  const baseName = path.basename(projectDir);
+  const worktreesBaseDir = path.join(os.homedir(), "worktrees");
+  const candidatePath = path.join(worktreesBaseDir, baseName);
+
+  // If directory doesn't exist or points to the same project, use base name
+  if (!fs.existsSync(candidatePath)) {
+    return baseName;
+  }
+
+  // Check if existing directory is for the same project by reading a marker file
+  const markerFile = path.join(candidatePath, ".fleetcode-project");
+  if (fs.existsSync(markerFile)) {
+    const existingProjectPath = fs.readFileSync(markerFile, "utf-8").trim();
+    if (existingProjectPath === projectDir) {
+      return baseName;
+    }
+  }
+
+  // Collision detected - append short hash
+  const crypto = require("crypto");
+  const hash = crypto.createHash("md5").update(projectDir).digest("hex").substring(0, 6);
+  return `${baseName}-${hash}`;
+}
+
 // Write MCP config file for a project (shared across all sessions)
 function writeMcpConfigFile(projectDir: string, mcpServers: any): string | null {
   try {
-    // Create a hash of the project directory for unique filename
-    const crypto = require("crypto");
-    const hash = crypto.createHash("md5").update(projectDir).digest("hex").substring(0, 8);
-
+    const projectDirName = getProjectWorktreeDirName(projectDir);
     const worktreesDir = path.join(os.homedir(), "worktrees");
     if (!fs.existsSync(worktreesDir)) {
       fs.mkdirSync(worktreesDir, { recursive: true });
     }
 
-    const configFilePath = path.join(worktreesDir, `mcp-config-${hash}.json`);
+    const configFilePath = path.join(worktreesDir, projectDirName, "mcp-config.json");
     const configContent = JSON.stringify({ mcpServers }, null, 2);
+
+    // Ensure project worktree directory exists
+    const projectWorktreeDir = path.join(worktreesDir, projectDirName);
+    if (!fs.existsSync(projectWorktreeDir)) {
+      fs.mkdirSync(projectWorktreeDir, { recursive: true });
+    }
 
     fs.writeFileSync(configFilePath, configContent, "utf8");
 
@@ -273,12 +302,9 @@ function spawnSessionPty(
 async function createWorktree(projectDir: string, parentBranch: string, sessionNumber: number, sessionUuid: string, customBranchName?: string): Promise<{ worktreePath: string; branchName: string }> {
   const git = simpleGit(projectDir);
 
-  // Create a hash of the project directory for unique worktree directory
-  const crypto = require("crypto");
-  const hash = crypto.createHash("md5").update(projectDir).digest("hex").substring(0, 8);
-
+  const projectDirName = getProjectWorktreeDirName(projectDir);
   const worktreesBaseDir = path.join(os.homedir(), "worktrees");
-  const projectWorktreeDir = path.join(worktreesBaseDir, hash);
+  const projectWorktreeDir = path.join(worktreesBaseDir, projectDirName);
   const worktreeName = customBranchName || `session${sessionNumber}`;
   const worktreePath = path.join(projectWorktreeDir, worktreeName);
 
@@ -295,6 +321,10 @@ async function createWorktree(projectDir: string, parentBranch: string, sessionN
   // Create worktrees directory if it doesn't exist
   if (!fs.existsSync(projectWorktreeDir)) {
     fs.mkdirSync(projectWorktreeDir, { recursive: true });
+
+    // Write marker file to track which project this directory belongs to
+    const markerFile = path.join(projectWorktreeDir, ".fleetcode-project");
+    fs.writeFileSync(markerFile, projectDir, "utf-8");
   }
 
   // Check if worktree already exists and remove it
