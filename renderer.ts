@@ -1133,8 +1133,8 @@ addMcpBtn?.addEventListener("click", async () => {
   }
 
   // Show loading state
-  const originalText = addMcpBtn.textContent;
-  addMcpBtn.textContent = "Adding...";
+  const originalText = addMcpBtn.innerHTML;
+  addMcpBtn.innerHTML = '<span class="loading-spinner"></span> Adding...';
   addMcpBtn.disabled = true;
   addMcpBtn.classList.add("opacity-50", "cursor-not-allowed");
 
@@ -1147,7 +1147,7 @@ addMcpBtn?.addEventListener("click", async () => {
     alert(`Failed to add server: ${error}`);
   } finally {
     // Reset button state
-    addMcpBtn.textContent = originalText;
+    addMcpBtn.innerHTML = originalText;
     addMcpBtn.disabled = false;
     addMcpBtn.classList.remove("opacity-50", "cursor-not-allowed");
   }
