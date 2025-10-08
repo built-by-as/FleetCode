@@ -1,6 +1,6 @@
 {
   "name": "fleetcode",
-  "version": "1.0.1-beta.5",
+  "version": "1.0.1-beta.6",
   "description": "Run multiple CLI coding agents at once",
   "main": "dist/main.js",
   "scripts": {
