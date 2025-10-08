@@ -704,7 +704,7 @@ ipcMain.handle("list-mcp-servers", async (_event, sessionId: string) => {
   }
 });
 
-ipcMain.handle("add-mcp-server", async (_event, _sessionId: string, name: string, config: any) => {
+ipcMain.handle("add-mcp-server", async (_event, name: string, config: any) => {
   try {
     await addMcpServer(name, config);
   } catch (error) {
@@ -713,7 +713,7 @@ ipcMain.handle("add-mcp-server", async (_event, _sessionId: string, name: string
   }
 });
 
-ipcMain.handle("remove-mcp-server", async (_event, _sessionId: string, name: string) => {
+ipcMain.handle("remove-mcp-server", async (_event, name: string) => {
   try {
     await removeMcpServer(name);
   } catch (error) {
@@ -722,7 +722,7 @@ ipcMain.handle("remove-mcp-server", async (_event, _sessionId: string, name: str
   }
 });
 
-ipcMain.handle("get-mcp-server-details", async (_event, _sessionId: string, name: string) => {
+ipcMain.handle("get-mcp-server-details", async (_event, name: string) => {
   try {
     return await getMcpServerDetails(name);
   } catch (error) {
