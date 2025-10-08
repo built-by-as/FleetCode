@@ -150,7 +150,8 @@ function spawnMcpPoller(sessionId: string, projectDir: string) {
       try {
         const servers = parseMcpOutput(outputBuffer);
 
-        // Merge servers into the map (upsert by name)
+        // Clear and replace the server map with current results
+        serverMap.clear();
         servers.forEach(server => {
           serverMap.set(server.name, server);
         });
@@ -639,9 +640,9 @@ function getUserShell(): string {
 // Execute command in user's login shell
 async function execInLoginShell(command: string): Promise<string> {
   const userShell = getUserShell();
-  const { stdout } = await execAsync(command, {
-    shell: `${userShell} -l -c`
-  });
+  // Wrap command to execute in login shell
+  const wrappedCommand = `${userShell} -l -c '${command.replace(/'/g, "'\\''")}'`;
+  const { stdout } = await execAsync(wrappedCommand);
   return stdout;
 }
 

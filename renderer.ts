@@ -973,11 +973,16 @@ function renderMcpServers() {
     removeBtn?.addEventListener("click", async (e) => {
       e.stopPropagation();
       if (confirm(`Remove MCP server "${server.name}"?`)) {
+        // Optimistically remove from UI
+        mcpServers = mcpServers.filter(s => s.name !== server.name);
+        renderMcpServers();
+
         try {
           await ipcRenderer.invoke("remove-mcp-server", server.name);
-          await refreshMcpServers();
         } catch (error) {
           alert(`Failed to remove server: ${error}`);
+          // Refresh to restore correct state on error
+          await refreshMcpServers();
         }
       }
     });
@@ -1193,23 +1198,28 @@ removeMcpDetailsBtn?.addEventListener("click", async () => {
   if (!serverName) return;
 
   if (confirm(`Remove MCP server "${serverName}"?`)) {
+    // Close modal immediately
+    mcpDetailsModal?.classList.add("hidden");
+
+    // Optimistically remove from UI
+    mcpServers = mcpServers.filter(s => s.name !== serverName);
+    renderMcpServers();
+
     try {
       await ipcRenderer.invoke("remove-mcp-server", serverName);
-      mcpDetailsModal?.classList.add("hidden");
-      await refreshMcpServers();
     } catch (error) {
       alert(`Failed to remove server: ${error}`);
+      // Refresh to restore correct state on error
+      await refreshMcpServers();
     }
   }
 });
 
 // Listen for MCP polling started event
 ipcRenderer.on("mcp-polling-started", (_event, sessionId: string) => {
-  console.log(`[MCP UI] Polling started for session ${sessionId}, active: ${activeSessionId}`);
   if (sessionId === activeSessionId) {
     const addMcpServerBtn = document.getElementById("add-mcp-server");
     if (addMcpServerBtn) {
-      console.log("[MCP UI] Setting add button to loading state");
       addMcpServerBtn.innerHTML = '<span class="loading-spinner"></span>';
       addMcpServerBtn.classList.add("pointer-events-none");
     }
@@ -1218,14 +1228,12 @@ ipcRenderer.on("mcp-polling-started", (_event, sessionId: string) => {
 
 // Listen for MCP server updates from main process
 ipcRenderer.on("mcp-servers-updated", (_event, sessionId: string, servers: McpServer[]) => {
-  console.log(`[MCP UI] Received update for session ${sessionId}, active: ${activeSessionId}`);
   // Only update if this is for the active session
   if (sessionId === activeSessionId) {
     mcpServers = servers;
     renderMcpServers();
 
     // Restore add button
-    console.log("[MCP UI] Restoring add button from loading state");
     const addMcpServerBtn = document.getElementById("add-mcp-server");
     if (addMcpServerBtn) {
       addMcpServerBtn.innerHTML = '+';
