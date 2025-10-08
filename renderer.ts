@@ -918,6 +918,31 @@ async function loadMcpServers() {
   }
 }
 
+// Force immediate refresh of MCP servers after add/remove operations
+async function refreshMcpServers() {
+  if (!activeSessionId) {
+    return;
+  }
+
+  // Show loading state on add button
+  const addMcpServerBtn = document.getElementById("add-mcp-server");
+  if (addMcpServerBtn) {
+    addMcpServerBtn.innerHTML = '<span class="loading-spinner"></span>';
+    addMcpServerBtn.classList.add("pointer-events-none");
+  }
+
+  try {
+    // Trigger MCP list command
+    await ipcRenderer.invoke("list-mcp-servers", activeSessionId);
+    // Wait a bit for the poller to process and send results
+    await new Promise(resolve => setTimeout(resolve, 500));
+  } catch (error) {
+    console.error("Failed to refresh MCP servers:", error);
+  } finally {
+    // Restore add button will happen via mcp-servers-updated event
+  }
+}
+
 function renderMcpServers() {
   const list = document.getElementById("mcp-server-list");
   if (!list) return;
@@ -950,7 +975,7 @@ function renderMcpServers() {
       if (confirm(`Remove MCP server "${server.name}"?`)) {
         try {
           await ipcRenderer.invoke("remove-mcp-server", server.name);
-          await loadMcpServers();
+          await refreshMcpServers();
         } catch (error) {
           alert(`Failed to remove server: ${error}`);
         }
@@ -1140,8 +1165,9 @@ addMcpBtn?.addEventListener("click", async () => {
 
   try {
     await ipcRenderer.invoke("add-mcp-server", name, config);
-    await loadMcpServers();
     mcpModal?.classList.add("hidden");
+    // Force immediate refresh of MCP servers
+    await refreshMcpServers();
   } catch (error) {
     console.error("Error adding server:", error);
     alert(`Failed to add server: ${error}`);
@@ -1170,7 +1196,7 @@ removeMcpDetailsBtn?.addEventListener("click", async () => {
     try {
       await ipcRenderer.invoke("remove-mcp-server", serverName);
       mcpDetailsModal?.classList.add("hidden");
-      await loadMcpServers();
+      await refreshMcpServers();
     } catch (error) {
       alert(`Failed to remove server: ${error}`);
     }
