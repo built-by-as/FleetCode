@@ -15,6 +15,7 @@ const execAsync = promisify(exec);
 let mainWindow: BrowserWindow;
 const activePtyProcesses = new Map<string, pty.IPty>();
 const mcpPollerPtyProcesses = new Map<string, pty.IPty>();
+let claudeCommandRunnerPty: pty.IPty | null = null;
 const store = new Store();
 
 // Helper functions for session management
@@ -632,35 +633,81 @@ async function listMcpServers() {
   }
 }
 
-// Get user's shell, with fallback
-function getUserShell(): string {
-  return process.env.SHELL || (os.platform() === "darwin" ? "/bin/zsh" : "/bin/bash");
+// Spawn a dedicated PTY for running claude commands
+function spawnClaudeCommandRunner() {
+  if (claudeCommandRunnerPty) {
+    return;
+  }
+
+  const shell = os.platform() === "darwin" ? "zsh" : "bash";
+  claudeCommandRunnerPty = pty.spawn(shell, ["-l"], {
+    name: "xterm-color",
+    cols: 80,
+    rows: 30,
+    cwd: os.homedir(),
+    env: process.env,
+  });
 }
 
-// Execute command in user's login shell
-async function execInLoginShell(command: string): Promise<string> {
-  const userShell = getUserShell();
-  // Wrap command to execute in login shell
-  const wrappedCommand = `${userShell} -l -c '${command.replace(/'/g, "'\\''")}'`;
-  const { stdout } = await execAsync(wrappedCommand);
-  return stdout;
+// Execute claude command in dedicated PTY
+async function execClaudeCommand(command: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    if (!claudeCommandRunnerPty) {
+      reject(new Error("Claude command runner PTY not initialized"));
+      return;
+    }
+
+    const pty = claudeCommandRunnerPty;
+    let outputBuffer = "";
+    let timeoutId: NodeJS.Timeout;
+    let disposed = false;
+
+    const dataHandler = pty.onData((data: string) => {
+      if (disposed) return;
+
+      outputBuffer += data;
+
+      // Check if command completed (prompt returned)
+      if (isTerminalReady(data)) {
+        disposed = true;
+        clearTimeout(timeoutId);
+        dataHandler.dispose();
+
+        // Extract just the command output (remove the command echo and prompt lines)
+        const lines = outputBuffer.split('\n');
+        const output = lines.slice(1, -1).join('\n').trim();
+        resolve(output);
+      }
+    });
+
+    // Set timeout
+    timeoutId = setTimeout(() => {
+      if (!disposed) {
+        disposed = true;
+        dataHandler.dispose();
+        reject(new Error("Command timeout"));
+      }
+    }, 10000);
+
+    pty.write(command + "\r");
+  });
 }
 
 async function addMcpServer(name: string, config: any) {
   // Use add-json to support full configuration including env vars, headers, etc.
   const jsonConfig = JSON.stringify(config).replace(/'/g, "'\\''"); // Escape single quotes for shell
   const command = `claude mcp add-json --scope user "${name}" '${jsonConfig}'`;
-  await execInLoginShell(command);
+  await execClaudeCommand(command);
 }
 
 async function removeMcpServer(name: string) {
   const command = `claude mcp remove "${name}"`;
-  await execInLoginShell(command);
+  await execClaudeCommand(command);
 }
 
 async function getMcpServerDetails(name: string) {
   try {
-    const output = await execInLoginShell(`claude mcp get "${name}"`);
+    const output = await execClaudeCommand(`claude mcp get "${name}"`);
 
     // Parse the output to extract details
     const details: any = { name };
@@ -776,6 +823,9 @@ const createWindow = () => {
 
 app.whenReady().then(() => {
   createWindow();
+
+  // Spawn claude command runner PTY early so it's ready when needed (fire-and-forget)
+  spawnClaudeCommandRunner();
 
   // Handles launch from dock on macos
   app.on("activate", () => {
