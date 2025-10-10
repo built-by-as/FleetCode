@@ -2,6 +2,7 @@ import {FitAddon} from "@xterm/addon-fit";
 import {ipcRenderer} from "electron";
 import {Terminal} from "xterm";
 import {PersistedSession, SessionConfig} from "./types";
+import {isClaudeSessionReady} from "./terminal-utils";
 
 interface Session {
   id: string;
@@ -12,7 +13,6 @@ interface Session {
   config: SessionConfig;
   worktreePath: string;
   hasActivePty: boolean;
-  hasUnreadActivity: boolean;
 }
 
 interface McpServer {
@@ -272,7 +272,6 @@ function addSession(persistedSession: PersistedSession, hasActivePty: boolean) {
     config: persistedSession.config,
     worktreePath: persistedSession.worktreePath,
     hasActivePty,
-    hasUnreadActivity: false,
   };
 
   sessions.set(persistedSession.id, session);
@@ -481,8 +480,6 @@ function markSessionAsUnread(sessionId: string) {
   const session = sessions.get(sessionId);
   if (!session) return;
 
-  session.hasUnreadActivity = true;
-
   // Add unread indicator to tab
   const tab = document.getElementById(`tab-${sessionId}`);
   if (tab) {
@@ -493,8 +490,6 @@ function markSessionAsUnread(sessionId: string) {
 function clearUnreadStatus(sessionId: string) {
   const session = sessions.get(sessionId);
   if (!session) return;
-
-  session.hasUnreadActivity = false;
 
   // Remove unread indicator from tab
   const tab = document.getElementById(`tab-${sessionId}`);
@@ -537,13 +532,6 @@ function switchToSession(sessionId: string) {
     // Clear unread status when switching to this session
     clearUnreadStatus(sessionId);
 
-    // Clear any pending idle timer for this session (Bug 1 fix)
-    const existingTimer = sessionIdleTimers.get(sessionId);
-    if (existingTimer) {
-      clearTimeout(existingTimer);
-      sessionIdleTimers.delete(sessionId);
-    }
-
     // Focus and resize
     session.terminal.focus();
     // Dispatch resize event to trigger terminal resize
@@ -574,13 +562,6 @@ function closeSession(sessionId: string) {
 
   // Update UI indicator
   updateSessionState(sessionId, false);
-
-  // Clean up idle timer (Bug 2 fix)
-  const existingTimer = sessionIdleTimers.get(sessionId);
-  if (existingTimer) {
-    clearTimeout(existingTimer);
-    sessionIdleTimers.delete(sessionId);
-  }
 
   // Close PTY in main process
   ipcRenderer.send("close-session", sessionId);
@@ -623,13 +604,6 @@ function deleteSession(sessionId: string) {
   // Remove from sessions map
   sessions.delete(sessionId);
 
-  // Clean up idle timer (Bug 2 fix)
-  const existingTimer = sessionIdleTimers.get(sessionId);
-  if (existingTimer) {
-    clearTimeout(existingTimer);
-    sessionIdleTimers.delete(sessionId);
-  }
-
   // Delete in main process (handles worktree removal)
   ipcRenderer.send("delete-session", sessionId);
 
@@ -649,10 +623,6 @@ function deleteSession(sessionId: string) {
   }
 }
 
-// Track idle timers per session to detect when output stops (Claude is done)
-const sessionIdleTimers = new Map<string, NodeJS.Timeout>();
-const IDLE_DELAY_MS = 500; // 0.5 seconds of no output = Claude is done
-
 // Handle session output
 ipcRenderer.on("session-output", (_event, sessionId: string, data: string) => {
   const session = sessions.get(sessionId);
@@ -664,27 +634,10 @@ ipcRenderer.on("session-output", (_event, sessionId: string, data: string) => {
     session.terminal.write(filteredData);
 
     // Only mark as unread if this is not the active session
-    if (activeSessionId !== sessionId && session.hasActivePty && !session.hasUnreadActivity) {
-      // Only track substantive output (ignore cursor movements, keepalives, etc)
-      // Look for actual text content or common escape sequences that indicate real output
-      const hasSubstantiveOutput = /[a-zA-Z0-9]/.test(filteredData) ||
-                                    filteredData.includes('\n') ||
-                                    filteredData.includes('\r');
-
-      if (hasSubstantiveOutput) {
-        // Clear any existing idle timer
-        const existingTimer = sessionIdleTimers.get(sessionId);
-        if (existingTimer) {
-          clearTimeout(existingTimer);
-        }
-
-        // Set a new timer - if no output for IDLE_DELAY_MS, mark as unread
-        const timer = setTimeout(() => {
-          markSessionAsUnread(sessionId);
-          sessionIdleTimers.delete(sessionId);
-        }, IDLE_DELAY_MS);
-
-        sessionIdleTimers.set(sessionId, timer);
+    if (activeSessionId !== sessionId && session.hasActivePty) {
+      // Check if Claude session is ready for input
+      if (isClaudeSessionReady(filteredData)) {
+        markSessionAsUnread(sessionId);
       }
     }
   }
