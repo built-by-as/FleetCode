@@ -9,6 +9,7 @@ import {simpleGit} from "simple-git";
 import {promisify} from "util";
 import {v4 as uuidv4} from "uuid";
 import {PersistedSession, SessionConfig} from "./types";
+import {isTerminalReady} from "./terminal-utils";
 
 const execAsync = promisify(exec);
 
@@ -29,12 +30,6 @@ function getWorktreeBaseDir(): string {
     return settings.worktreeDir;
   }
   return path.join(os.homedir(), "worktrees");
-}
-
-function isTerminalReady(buffer: string, startPos: number = 0): boolean {
-  const searchBuffer = buffer.slice(startPos);
-
-  return searchBuffer.includes("\x1b[?2004h", startPos);
 }
 
 function savePersistedSessions(sessions: PersistedSession[]) {
@@ -139,6 +134,7 @@ function spawnMcpPoller(sessionId: string, projectDir: string) {
   const serverMap = new Map<string, any>();
 
   ptyProcess.onData((data) => {
+
     // Accumulate output without displaying it
     outputBuffer += data;
 
@@ -469,6 +465,7 @@ ipcMain.on("create-session", async (event, config: SessionConfig) => {
 // Handle session input
 ipcMain.on("session-input", (_event, sessionId: string, data: string) => {
   const ptyProcess = activePtyProcesses.get(sessionId);
+
   if (ptyProcess) {
     ptyProcess.write(data);
   }
@@ -508,6 +505,7 @@ ipcMain.on("reopen-session", (event, sessionId: string) => {
 // Close session (kill PTY but keep session)
 ipcMain.on("close-session", (_event, sessionId: string) => {
   const ptyProcess = activePtyProcesses.get(sessionId);
+
   if (ptyProcess) {
     ptyProcess.kill();
     activePtyProcesses.delete(sessionId);
