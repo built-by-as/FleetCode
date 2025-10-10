@@ -113,15 +113,24 @@
     @apply bg-gray-800 border-b-2 border-blue-500;
   }
 
-  .tab.unread .tab-name::after {
-    content: '';
-    display: inline-block;
+  .unread-indicator {
+    display: none;
     width: 6px;
     height: 6px;
-    background-color: #3b82f6;
     border-radius: 50%;
-    margin-left: 6px;
-    vertical-align: middle;
+    margin-right: 6px;
+  }
+
+  .tab.unread .unread-indicator {
+    display: inline-block;
+    background-color: #3b82f6;
+  }
+
+  .tab.activity .unread-indicator {
+    display: inline-block;
+    border: 1.5px solid #eab308;
+    background-color: transparent;
+    animation: spin 1s linear infinite;
   }
 
   .tab-name {

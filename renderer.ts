@@ -213,6 +213,9 @@ let mcpServers: McpServer[] = [];
 let mcpPollerActive = false;
 let terminalSettings: TerminalSettings = { ...DEFAULT_SETTINGS };
 
+// Track activity timers for each session
+const activityTimers = new Map<string, NodeJS.Timeout>();
+
 function createTerminalUI(sessionId: string) {
   const themeColors = THEME_PRESETS[terminalSettings.theme] || THEME_PRESETS["macos-dark"];
 
@@ -457,6 +460,7 @@ function addTab(sessionId: string, name: string) {
   tab.id = `tab-${sessionId}`;
   tab.className = "tab";
   tab.innerHTML = `
+    <span class="unread-indicator"></span>
     <span class="tab-name">${name}</span>
     <button class="tab-close-btn" data-id="${sessionId}">×</button>
   `;
@@ -498,6 +502,49 @@ function clearUnreadStatus(sessionId: string) {
   }
 }
 
+function markSessionActivity(sessionId: string) {
+  const session = sessions.get(sessionId);
+  if (!session) return;
+
+  // Add activity indicator to tab
+  const tab = document.getElementById(`tab-${sessionId}`);
+  if (tab) {
+    tab.classList.add("activity");
+    tab.classList.remove("unread");
+  }
+
+  // Clear any existing timer
+  const existingTimer = activityTimers.get(sessionId);
+  if (existingTimer) {
+    clearTimeout(existingTimer);
+  }
+
+  // Set a new timer to remove activity after 1 second of no output
+  const timer = setTimeout(() => {
+    clearActivityStatus(sessionId);
+  }, 1000);
+
+  activityTimers.set(sessionId, timer);
+}
+
+function clearActivityStatus(sessionId: string) {
+  const session = sessions.get(sessionId);
+  if (!session) return;
+
+  // Remove activity indicator from tab, but keep unread if it's set
+  const tab = document.getElementById(`tab-${sessionId}`);
+  if (tab) {
+    tab.classList.remove("activity");
+    // If there's no unread status, transition to unread after activity ends
+    if (!tab.classList.contains("unread") && activeSessionId !== sessionId) {
+      tab.classList.add("unread");
+    }
+  }
+
+  // Clear the timer
+  activityTimers.delete(sessionId);
+}
+
 function switchToSession(sessionId: string) {
   // Hide all sessions
   sessions.forEach((session, id) => {
@@ -529,8 +576,9 @@ function switchToSession(sessionId: string) {
     // Load MCP servers for this session
     loadMcpServers();
 
-    // Clear unread status when switching to this session
+    // Clear unread and activity status when switching to this session
     clearUnreadStatus(sessionId);
+    clearActivityStatus(sessionId);
 
     // Focus and resize
     session.terminal.focus();
@@ -633,11 +681,25 @@ ipcRenderer.on("session-output", (_event, sessionId: string, data: string) => {
 
     session.terminal.write(filteredData);
 
-    // Only mark as unread if this is not the active session
+    // Only mark as unread/activity if this is not the active session
     if (activeSessionId !== sessionId && session.hasActivePty) {
+      // Show activity spinner while output is coming in
+      markSessionActivity(sessionId);
+
       // Check if Claude session is ready for input
       if (isClaudeSessionReady(filteredData)) {
-        markSessionAsUnread(sessionId);
+        // Clear activity timer and set unread
+        const existingTimer = activityTimers.get(sessionId);
+        if (existingTimer) {
+          clearTimeout(existingTimer);
+          activityTimers.delete(sessionId);
+        }
+
+        const tab = document.getElementById(`tab-${sessionId}`);
+        if (tab) {
+          tab.classList.remove("activity");
+          tab.classList.add("unread");
+        }
       }
     }
   }
