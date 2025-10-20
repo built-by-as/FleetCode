@@ -10,6 +10,7 @@ import {promisify} from "util";
 import {v4 as uuidv4} from "uuid";
 import {PersistedSession, SessionConfig} from "./types";
 import {isTerminalReady} from "./terminal-utils";
+import {getBranches} from "./git-utils";
 
 const execAsync = promisify(exec);
 
@@ -389,14 +390,7 @@ ipcMain.handle("select-directory", async () => {
 
 // Get git branches from directory
 ipcMain.handle("get-branches", async (_event, dirPath: string) => {
-  try {
-    const git = simpleGit(dirPath);
-    const branchSummary = await git.branch();
-    return branchSummary.all;
-  } catch (error) {
-    console.error("Error getting branches:", error);
-    return [];
-  }
+  return getBranches(dirPath);
 });
 
 // Get last used settings
