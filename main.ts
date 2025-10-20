@@ -10,6 +10,7 @@ import {promisify} from "util";
 import {v4 as uuidv4} from "uuid";
 import {PersistedSession, SessionConfig} from "./types";
 import {isTerminalReady} from "./terminal-utils";
+import {getBranches} from "./branch-utils";
 
 const execAsync = promisify(exec);
 
@@ -389,26 +390,7 @@ ipcMain.handle("select-directory", async () => {
 
 // Get git branches from directory
 ipcMain.handle("get-branches", async (_event, dirPath: string) => {
-  try {
-    const git = simpleGit(dirPath);
-    const branchSummary = await git.branch();
-    const branches = branchSummary.all;
-
-    // Sort branches with main/master first
-    return branches.sort((a, b) => {
-      const aIsMain = a === 'main' || a === 'master';
-      const bIsMain = b === 'main' || b === 'master';
-
-      if (aIsMain && !bIsMain) return -1;
-      if (!aIsMain && bIsMain) return 1;
-
-      // If both or neither are main/master, keep original order
-      return 0;
-    });
-  } catch (error) {
-    console.error("Error getting branches:", error);
-    return [];
-  }
+  return getBranches(dirPath);
 });
 
 // Get last used settings
