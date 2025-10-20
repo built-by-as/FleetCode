@@ -1,4 +1,4 @@
-import {getBranches, sortBranchesWithMainFirst} from './branch-utils';
+import {getBranches, sortBranchesWithMainFirst} from './git-utils';
 import {simpleGit} from 'simple-git';
 
 // Mock simple-git

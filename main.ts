@@ -10,7 +10,7 @@ import {promisify} from "util";
 import {v4 as uuidv4} from "uuid";
 import {PersistedSession, SessionConfig} from "./types";
 import {isTerminalReady} from "./terminal-utils";
-import {getBranches} from "./branch-utils";
+import {getBranches} from "./git-utils";
 
 const execAsync = promisify(exec);
 
