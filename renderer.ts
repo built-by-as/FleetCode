@@ -216,6 +216,28 @@ let terminalSettings: TerminalSettings = { ...DEFAULT_SETTINGS };
 // Track activity timers for each session
 const activityTimers = new Map<string, NodeJS.Timeout>();
 
+async function loadAndPopulateBranches(
+  directory: string,
+  selectedBranch?: string
+): Promise<void> {
+  const branches = await ipcRenderer.invoke("get-branches", directory);
+  parentBranchSelect.innerHTML = "";
+
+  if (branches.length === 0) {
+    parentBranchSelect.innerHTML = '<option value="">No git repository found</option>';
+  } else {
+    branches.forEach((branch: string) => {
+      const option = document.createElement("option");
+      option.value = branch;
+      option.textContent = branch;
+      if (branch === selectedBranch) {
+        option.selected = true;
+      }
+      parentBranchSelect.appendChild(option);
+    });
+  }
+}
+
 function createTerminalUI(sessionId: string) {
   const themeColors = THEME_PRESETS[terminalSettings.theme] || THEME_PRESETS["macos-dark"];
 
@@ -805,22 +827,7 @@ document.getElementById("new-session")?.addEventListener("click", async () => {
     projectDirInput.value = lastSettings.projectDir;
 
     // Load git branches for the last directory
-    const branches = await ipcRenderer.invoke("get-branches", lastSettings.projectDir);
-    parentBranchSelect.innerHTML = "";
-
-    if (branches.length === 0) {
-      parentBranchSelect.innerHTML = '<option value="">No git repository found</option>';
-    } else {
-      branches.forEach((branch: string) => {
-        const option = document.createElement("option");
-        option.value = branch;
-        option.textContent = branch;
-        if (branch === lastSettings.parentBranch) {
-          option.selected = true;
-        }
-        parentBranchSelect.appendChild(option);
-      });
-    }
+    await loadAndPopulateBranches(lastSettings.projectDir, lastSettings.parentBranch);
   }
 
   // Set last used coding agent
@@ -855,19 +862,7 @@ browseDirBtn?.addEventListener("click", async () => {
     projectDirInput.value = dir;
 
     // Load git branches
-    const branches = await ipcRenderer.invoke("get-branches", dir);
-    parentBranchSelect.innerHTML = "";
-
-    if (branches.length === 0) {
-      parentBranchSelect.innerHTML = '<option value="">No git repository found</option>';
-    } else {
-      branches.forEach((branch: string) => {
-        const option = document.createElement("option");
-        option.value = branch;
-        option.textContent = branch;
-        parentBranchSelect.appendChild(option);
-      });
-    }
+    await loadAndPopulateBranches(dir);
   }
 });
 
