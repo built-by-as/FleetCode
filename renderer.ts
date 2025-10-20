@@ -218,14 +218,13 @@ const activityTimers = new Map<string, NodeJS.Timeout>();
 
 async function loadAndPopulateBranches(
   directory: string,
-  selectElement: HTMLSelectElement,
   selectedBranch?: string
 ): Promise<void> {
   const branches = await ipcRenderer.invoke("get-branches", directory);
-  selectElement.innerHTML = "";
+  parentBranchSelect.innerHTML = "";
 
   if (branches.length === 0) {
-    selectElement.innerHTML = '<option value="">No git repository found</option>';
+    parentBranchSelect.innerHTML = '<option value="">No git repository found</option>';
   } else {
     branches.forEach((branch: string) => {
       const option = document.createElement("option");
@@ -234,7 +233,7 @@ async function loadAndPopulateBranches(
       if (branch === selectedBranch) {
         option.selected = true;
       }
-      selectElement.appendChild(option);
+      parentBranchSelect.appendChild(option);
     });
   }
 }
@@ -828,7 +827,7 @@ document.getElementById("new-session")?.addEventListener("click", async () => {
     projectDirInput.value = lastSettings.projectDir;
 
     // Load git branches for the last directory
-    await loadAndPopulateBranches(lastSettings.projectDir, parentBranchSelect, lastSettings.parentBranch);
+    await loadAndPopulateBranches(lastSettings.projectDir, lastSettings.parentBranch);
   }
 
   // Set last used coding agent
@@ -863,7 +862,7 @@ browseDirBtn?.addEventListener("click", async () => {
     projectDirInput.value = dir;
 
     // Load git branches
-    await loadAndPopulateBranches(dir, parentBranchSelect);
+    await loadAndPopulateBranches(dir);
   }
 });
 
