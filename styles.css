@@ -166,7 +166,7 @@
   }
 
   .modal {
-    @apply bg-gray-800 rounded-lg shadow-xl w-full max-w-md p-6;
+    @apply bg-gray-800 rounded-lg shadow-xl w-full max-w-md p-6 max-h-[90vh] overflow-y-auto;
   }
 
   .modal-title {
