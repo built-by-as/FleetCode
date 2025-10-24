@@ -8,9 +8,9 @@ import * as path from "path";
 import {simpleGit} from "simple-git";
 import {promisify} from "util";
 import {v4 as uuidv4} from "uuid";
-import {PersistedSession, SessionConfig} from "./types";
-import {isTerminalReady} from "./terminal-utils";
 import {getBranches} from "./git-utils";
+import {isTerminalReady} from "./terminal-utils";
+import {PersistedSession, SessionConfig, SessionType} from "./types";
 
 const execAsync = promisify(exec);
 
@@ -22,7 +22,16 @@ const store = new Store();
 
 // Helper functions for session management
 function getPersistedSessions(): PersistedSession[] {
-  return (store as any).get("sessions", []);
+  const sessions = (store as any).get("sessions", []) as PersistedSession[];
+
+  // Migrate old sessions that don't have sessionType field
+  return sessions.map(session => {
+    if (!session.config.sessionType) {
+      // If session has a worktreePath, it's a worktree session; otherwise local
+      session.config.sessionType = session.worktreePath ? SessionType.WORKTREE : SessionType.LOCAL;
+    }
+    return session;
+  });
 }
 
 function getWorktreeBaseDir(): string {
@@ -232,7 +241,7 @@ function parseMcpOutput(output: string): any[] {
 // Helper function to spawn PTY and setup coding agent
 function spawnSessionPty(
   sessionId: string,
-  worktreePath: string,
+  workingDirectory: string,
   config: SessionConfig,
   sessionUuid: string,
   isNewSession: boolean,
@@ -244,7 +253,7 @@ function spawnSessionPty(
     name: "xterm-color",
     cols: 80,
     rows: 30,
-    cwd: worktreePath,
+    cwd: workingDirectory,
     env: process.env,
   });
 
@@ -397,6 +406,7 @@ ipcMain.handle("get-branches", async (_event, dirPath: string) => {
 ipcMain.handle("get-last-settings", () => {
   return (store as any).get("lastSessionConfig", {
     projectDir: "",
+    sessionType: SessionType.WORKTREE,
     parentBranch: "",
     codingAgent: "claude",
     skipPermissions: true,
@@ -417,15 +427,36 @@ ipcMain.on("create-session", async (event, config: SessionConfig) => {
     // Use custom branch name as session name if provided, otherwise default
     const sessionName = config.branchName || `Session ${sessionNumber}`;
 
-    // Generate UUID for this session (before creating worktree)
+    // Generate UUID for this session
     const sessionUuid = uuidv4();
 
-    // Create git worktree with custom or default branch name
-    const { worktreePath, branchName } = await createWorktree(config.projectDir, config.parentBranch, sessionNumber, sessionUuid, config.branchName);
+    let worktreePath: string | undefined;
+    let workingDirectory: string;
+    let branchName: string | undefined;
+    let mcpConfigPath: string | undefined;
 
-    // Extract and write MCP config
-    const mcpServers = extractProjectMcpConfig(config.projectDir);
-    const mcpConfigPath = writeMcpConfigFile(config.projectDir, mcpServers);
+    if (config.sessionType === SessionType.WORKTREE) {
+      // Validate that parentBranch is provided for worktree sessions
+      if (!config.parentBranch) {
+        throw new Error("Parent branch is required for worktree sessions");
+      }
+
+      // Create git worktree with custom or default branch name
+      const worktreeResult = await createWorktree(config.projectDir, config.parentBranch, sessionNumber, sessionUuid, config.branchName);
+      worktreePath = worktreeResult.worktreePath;
+      workingDirectory = worktreeResult.worktreePath;
+      branchName = worktreeResult.branchName;
+
+      // Extract and write MCP config
+      const mcpServers = extractProjectMcpConfig(config.projectDir);
+      mcpConfigPath = writeMcpConfigFile(config.projectDir, mcpServers) || undefined;
+    } else {
+      // For local sessions, use the project directory directly (no worktree)
+      worktreePath = undefined;
+      workingDirectory = config.projectDir;
+      branchName = undefined;
+      mcpConfigPath = undefined;
+    }
 
     // Create persisted session metadata
     const persistedSession: PersistedSession = {
@@ -436,7 +467,7 @@ ipcMain.on("create-session", async (event, config: SessionConfig) => {
       worktreePath,
       createdAt: Date.now(),
       sessionUuid,
-      mcpConfigPath: mcpConfigPath || undefined,
+      mcpConfigPath,
       gitBranch: branchName,
     };
 
@@ -445,8 +476,8 @@ ipcMain.on("create-session", async (event, config: SessionConfig) => {
     sessions.push(persistedSession);
     savePersistedSessions(sessions);
 
-    // Spawn PTY in worktree directory
-    spawnSessionPty(sessionId, worktreePath, config, sessionUuid, true, mcpConfigPath || undefined, config.projectDir);
+    // Spawn PTY in the appropriate directory
+    spawnSessionPty(sessionId, workingDirectory, config, sessionUuid, true, mcpConfigPath, config.projectDir);
 
     event.reply("session-created", sessionId, persistedSession);
   } catch (error) {
@@ -490,8 +521,11 @@ ipcMain.on("reopen-session", (event, sessionId: string) => {
     return;
   }
 
-  // Spawn new PTY in worktree directory
-  spawnSessionPty(sessionId, session.worktreePath, session.config, session.sessionUuid, false, session.mcpConfigPath, session.config.projectDir);
+  // For non-worktree sessions, use project directory; otherwise use worktree path
+  const workingDir = session.worktreePath || session.config.projectDir;
+
+  // Spawn new PTY in the appropriate directory
+  spawnSessionPty(sessionId, workingDir, session.config, session.sessionUuid, false, session.mcpConfigPath, session.config.projectDir);
 
   event.reply("session-reopened", sessionId);
 });
@@ -540,12 +574,15 @@ ipcMain.on("delete-session", async (_event, sessionId: string) => {
 
   const session = sessions[sessionIndex];
 
-  // Remove git worktree
-  await removeWorktree(session.config.projectDir, session.worktreePath);
+  // Only clean up git worktree and branch for worktree sessions
+  if (session.config.sessionType === SessionType.WORKTREE && session.worktreePath) {
+    // Remove git worktree
+    await removeWorktree(session.config.projectDir, session.worktreePath);
 
-  // Remove git branch if it exists
-  if (session.gitBranch) {
-    await removeGitBranch(session.config.projectDir, session.gitBranch);
+    // Remove git branch if it exists
+    if (session.gitBranch) {
+      await removeGitBranch(session.config.projectDir, session.gitBranch);
+    }
   }
 
   // Remove from store

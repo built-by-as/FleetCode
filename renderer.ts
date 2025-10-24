@@ -1,7 +1,7 @@
 import {FitAddon} from "@xterm/addon-fit";
 import {ipcRenderer} from "electron";
 import {Terminal} from "xterm";
-import {PersistedSession, SessionConfig} from "./types";
+import {PersistedSession, SessionConfig, SessionType} from "./types";
 import {isClaudeSessionReady} from "./terminal-utils";
 
 interface Session {
@@ -11,7 +11,7 @@ interface Session {
   element: HTMLDivElement | null;
   name: string;
   config: SessionConfig;
-  worktreePath: string;
+  worktreePath?: string;
   hasActivePty: boolean;
 }
 
@@ -800,6 +800,11 @@ const parentBranchSelect = document.getElementById("parent-branch") as HTMLSelec
 const codingAgentSelect = document.getElementById("coding-agent") as HTMLSelectElement;
 const skipPermissionsCheckbox = document.getElementById("skip-permissions") as HTMLInputElement;
 const skipPermissionsGroup = skipPermissionsCheckbox?.parentElement?.parentElement;
+const sessionTypeSelect = document.getElementById("session-type") as HTMLSelectElement;
+const parentBranchGroup = document.getElementById("parent-branch-group");
+const branchNameGroup = document.getElementById("branch-name-group");
+const worktreeDescription = document.getElementById("worktree-description");
+const localDescription = document.getElementById("local-description");
 const browseDirBtn = document.getElementById("browse-dir");
 const cancelBtn = document.getElementById("cancel-session");
 const createBtn = document.getElementById("create-session") as HTMLButtonElement;
@@ -812,6 +817,22 @@ codingAgentSelect?.addEventListener("change", () => {
     skipPermissionsGroup?.classList.remove("hidden");
   } else {
     skipPermissionsGroup?.classList.add("hidden");
+  }
+});
+
+// Toggle parent branch and branch name visibility based on session type
+sessionTypeSelect?.addEventListener("change", () => {
+  const isWorktree = sessionTypeSelect.value === SessionType.WORKTREE;
+  if (isWorktree) {
+    parentBranchGroup?.classList.remove("hidden");
+    branchNameGroup?.classList.remove("hidden");
+    worktreeDescription?.style.setProperty("display", "block");
+    localDescription?.style.setProperty("display", "none");
+  } else {
+    parentBranchGroup?.classList.add("hidden");
+    branchNameGroup?.classList.add("hidden");
+    worktreeDescription?.style.setProperty("display", "none");
+    localDescription?.style.setProperty("display", "block");
   }
 });
 
@@ -828,6 +849,27 @@ document.getElementById("new-session")?.addEventListener("click", async () => {
 
     // Load git branches for the last directory
     await loadAndPopulateBranches(lastSettings.projectDir, lastSettings.parentBranch);
+  }
+
+  // Set last used session type (default to worktree if not set)
+  if (lastSettings.sessionType) {
+    sessionTypeSelect.value = lastSettings.sessionType;
+  } else {
+    sessionTypeSelect.value = SessionType.WORKTREE;
+  }
+
+  // Show/hide parent branch, branch name, and descriptions based on session type
+  const isWorktree = sessionTypeSelect.value === SessionType.WORKTREE;
+  if (isWorktree) {
+    parentBranchGroup?.classList.remove("hidden");
+    branchNameGroup?.classList.remove("hidden");
+    worktreeDescription?.style.setProperty("display", "block");
+    localDescription?.style.setProperty("display", "none");
+  } else {
+    parentBranchGroup?.classList.add("hidden");
+    branchNameGroup?.classList.add("hidden");
+    worktreeDescription?.style.setProperty("display", "none");
+    localDescription?.style.setProperty("display", "block");
   }
 
   // Set last used coding agent
@@ -881,6 +923,14 @@ createBtn?.addEventListener("click", () => {
     return;
   }
 
+  const sessionType = sessionTypeSelect.value as SessionType;
+
+  // Validate parent branch is selected for worktree sessions
+  if (sessionType === SessionType.WORKTREE && !parentBranchSelect.value) {
+    alert("Please select a parent branch for worktree session");
+    return;
+  }
+
   const setupCommandsTextarea = document.getElementById("setup-commands") as HTMLTextAreaElement;
   const setupCommandsText = setupCommandsTextarea?.value.trim();
   const setupCommands = setupCommandsText
@@ -892,7 +942,8 @@ createBtn?.addEventListener("click", () => {
 
   const config: SessionConfig = {
     projectDir: selectedDirectory,
-    parentBranch: parentBranchSelect.value,
+    sessionType,
+    parentBranch: sessionType === SessionType.WORKTREE ? parentBranchSelect.value : undefined,
     branchName,
     codingAgent: codingAgentSelect.value,
     skipPermissions: codingAgentSelect.value === "claude" ? skipPermissionsCheckbox.checked : false,

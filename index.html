@@ -65,16 +65,28 @@
         </div>
 
         <div class="form-group">
+          <label class="form-label">Session Type</label>
+          <select id="session-type" class="form-select">
+            <option value="worktree">Worktree</option>
+            <option value="local">Local</option>
+          </select>
+          <div class="text-xs text-gray-400 mt-2">
+            <div id="worktree-description">Creates an isolated git branch in a separate directory. Best for experimenting with changes without affecting your main workspace.</div>
+            <div id="local-description" style="display: none;">Works directly in your project directory. Best when you need to see changes immediately (e.g., app restart required) or working on non-git projects.</div>
+          </div>
+        </div>
+
+        <div class="form-group" id="parent-branch-group">
           <label class="form-label">Parent Branch</label>
           <select id="parent-branch" class="form-select">
             <option value="">Loading branches...</option>
           </select>
         </div>
 
-        <div class="form-group">
+        <div class="form-group" id="branch-name-group">
           <label class="form-label">Branch Name (optional)</label>
           <input type="text" id="branch-name" class="form-input" placeholder="e.g., feature/add-login" />
-          <span class="text-xs text-gray-400 mt-1 block">Custom branch name (will also be used as session name)</span>
+          <span class="text-xs text-gray-400 mt-1 block">Custom branch name for worktree (will also be used as session name)</span>
         </div>
 
         <div class="form-group">

@@ -1,6 +1,12 @@
+export enum SessionType {
+  WORKTREE = "worktree",
+  LOCAL = "local"
+}
+
 export interface SessionConfig {
   projectDir: string;
-  parentBranch: string;
+  sessionType: SessionType;
+  parentBranch?: string;
   branchName?: string;
   codingAgent: string;
   skipPermissions: boolean;
@@ -12,7 +18,7 @@ export interface PersistedSession {
   number: number;
   name: string;
   config: SessionConfig;
-  worktreePath: string;
+  worktreePath?: string;
   createdAt: number;
   sessionUuid: string;
   mcpConfigPath?: string;
