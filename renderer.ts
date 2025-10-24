@@ -221,6 +221,7 @@ async function loadAndPopulateBranches(
   selectedBranch?: string
 ): Promise<void> {
   const branches = await ipcRenderer.invoke("get-branches", directory);
+  existingBranches = branches;
   parentBranchSelect.innerHTML = "";
 
   if (branches.length === 0) {
@@ -758,6 +759,13 @@ ipcRenderer.on("session-created", (_event, sessionId: string, persistedSession: 
   if (setupCommandsTextarea) {
     setupCommandsTextarea.value = "";
   }
+
+  // Reset validation state
+  const branchNameError = document.getElementById("branch-name-error");
+  const branchNameHelp = document.getElementById("branch-name-help");
+  branchNameError?.classList.add("hidden");
+  branchNameHelp?.classList.remove("hidden");
+  existingBranches = [];
 });
 
 // Handle session reopened
@@ -808,8 +816,44 @@ const localDescription = document.getElementById("local-description");
 const browseDirBtn = document.getElementById("browse-dir");
 const cancelBtn = document.getElementById("cancel-session");
 const createBtn = document.getElementById("create-session") as HTMLButtonElement;
+const branchNameInput = document.getElementById("branch-name") as HTMLInputElement;
+const branchNameError = document.getElementById("branch-name-error");
+const branchNameHelp = document.getElementById("branch-name-help");
 
 let selectedDirectory = "";
+let existingBranches: string[] = [];
+
+// Validate branch name
+function validateBranchName(): boolean {
+  const branchName = branchNameInput?.value.trim();
+
+  if (!branchName) {
+    // Empty branch name is allowed (it's optional)
+    branchNameError?.classList.add("hidden");
+    branchNameHelp?.classList.remove("hidden");
+    return true;
+  }
+
+  // Check if branch already exists
+  const branchExists = existingBranches.some(branch =>
+    branch === branchName || branch === `origin/${branchName}`
+  );
+
+  if (branchExists) {
+    branchNameError?.classList.remove("hidden");
+    branchNameHelp?.classList.add("hidden");
+    return false;
+  } else {
+    branchNameError?.classList.add("hidden");
+    branchNameHelp?.classList.remove("hidden");
+    return true;
+  }
+}
+
+// Add input event listener for branch name validation
+branchNameInput?.addEventListener("input", () => {
+  validateBranchName();
+});
 
 // Toggle skip permissions checkbox visibility based on coding agent
 codingAgentSelect?.addEventListener("change", () => {
@@ -914,6 +958,10 @@ cancelBtn?.addEventListener("click", () => {
   projectDirInput.value = "";
   selectedDirectory = "";
   parentBranchSelect.innerHTML = '<option value="">Loading branches...</option>';
+  branchNameInput.value = "";
+  branchNameError?.classList.add("hidden");
+  branchNameHelp?.classList.remove("hidden");
+  existingBranches = [];
 });
 
 // Create session button
@@ -928,6 +976,12 @@ createBtn?.addEventListener("click", () => {
   // Validate parent branch is selected for worktree sessions
   if (sessionType === SessionType.WORKTREE && !parentBranchSelect.value) {
     alert("Please select a parent branch for worktree session");
+    return;
+  }
+
+  // Validate branch name doesn't already exist for worktree sessions
+  if (sessionType === SessionType.WORKTREE && !validateBranchName()) {
+    alert("Cannot create worktree: branch already exists");
     return;
   }
 

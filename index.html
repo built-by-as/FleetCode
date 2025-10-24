@@ -86,7 +86,8 @@
         <div class="form-group" id="branch-name-group">
           <label class="form-label">Branch Name (optional)</label>
           <input type="text" id="branch-name" class="form-input" placeholder="e.g., feature/add-login" />
-          <span class="text-xs text-gray-400 mt-1 block">Custom branch name for worktree (will also be used as session name)</span>
+          <span id="branch-name-error" class="text-xs text-red-400 mt-1 hidden">Branch already exists</span>
+          <span id="branch-name-help" class="text-xs text-gray-400 mt-1 block">Custom branch name for worktree (will also be used as session name)</span>
         </div>
 
         <div class="form-group">
