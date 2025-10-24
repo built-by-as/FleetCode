@@ -74,14 +74,16 @@
   }
 
   .session-menu-btn {
-    @apply text-gray-500 hover:text-gray-300 hover:bg-gray-600 ml-2 px-2 rounded transition-all;
-    opacity: 0;
-    font-size: 18px;
-    line-height: 1;
-  }
-
-  .session-list-item:hover .session-menu-btn {
-    opacity: 1;
+    @apply text-gray-500 hover:text-gray-300 hover:bg-gray-600 ml-2 transition-all;
+    font-size: 14px;
+    line-height: 0.8;
+    writing-mode: vertical-lr;
+    letter-spacing: -2px;
+    padding: 6px 3px;
+    border-radius: 6px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
   }
 
   .session-menu {
