@@ -73,14 +73,29 @@
     @apply bg-red-500;
   }
 
-  .session-delete-btn {
-    @apply text-gray-500 hover:text-red-500 ml-2;
-    opacity: 0;
-    transition: opacity 0.2s;
+  .session-menu-btn {
+    @apply text-gray-500 hover:text-gray-300 hover:bg-gray-600 ml-2 transition-all;
+    font-size: 14px;
+    line-height: 0.8;
+    writing-mode: vertical-lr;
+    letter-spacing: -2px;
+    padding: 6px 3px;
+    border-radius: 6px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
   }
 
-  .session-list-item:hover .session-delete-btn {
-    opacity: 1;
+  .session-menu {
+    @apply absolute right-0 mt-1 bg-gray-700 border border-gray-600 rounded shadow-lg z-10 py-1 min-w-[120px];
+  }
+
+  .session-menu-item {
+    @apply w-full text-left px-3 py-2 text-sm text-gray-300 hover:bg-gray-600 hover:text-white transition-colors;
+  }
+
+  .session-menu-item.delete-session-btn {
+    @apply hover:bg-red-600 hover:text-white;
   }
 
   .session-name-container {
@@ -88,11 +103,7 @@
   }
 
   .session-name-text {
-    cursor: pointer;
-  }
-
-  .session-name-text:hover {
-    @apply text-gray-100;
+    @apply text-gray-300;
   }
 
   .session-name-input {

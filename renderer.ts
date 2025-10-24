@@ -363,19 +363,17 @@ function addToSidebar(sessionId: string, name: string, hasActivePty: boolean) {
       <span class="truncate session-name-text" data-id="${sessionId}">${name}</span>
       <input type="text" class="session-name-input hidden" data-id="${sessionId}" value="${name}" />
     </div>
-    <button class="session-delete-btn" data-id="${sessionId}" title="Delete session">×</button>
+    <div class="relative">
+      <button class="session-menu-btn" data-id="${sessionId}" title="Session options">⋯</button>
+      <div class="session-menu hidden" data-id="${sessionId}">
+        <button class="session-menu-item rename-session-btn" data-id="${sessionId}">Rename</button>
+        <button class="session-menu-item delete-session-btn" data-id="${sessionId}">Delete</button>
+      </div>
+    </div>
   `;
 
-  // Click on session name to edit
-  const nameText = item.querySelector(".session-name-text");
-  const nameInput = item.querySelector(".session-name-input") as HTMLInputElement;
-
-  nameText?.addEventListener("click", (e) => {
-    e.stopPropagation();
-    startEditingSessionName(sessionId);
-  });
-
   // Handle input blur and enter key
+  const nameInput = item.querySelector(".session-name-input") as HTMLInputElement;
   nameInput?.addEventListener("blur", () => {
     finishEditingSessionName(sessionId);
   });
@@ -388,18 +386,46 @@ function addToSidebar(sessionId: string, name: string, hasActivePty: boolean) {
     }
   });
 
+  // Click on item to activate session
   item.addEventListener("click", (e) => {
     const target = e.target as HTMLElement;
-    if (!target.classList.contains("session-delete-btn") &&
-        !target.classList.contains("session-name-text") &&
-        !target.classList.contains("session-name-input")) {
+    if (!target.classList.contains("session-menu-btn") &&
+        !target.classList.contains("session-menu-item") &&
+        !target.classList.contains("session-name-input") &&
+        !target.closest(".session-menu")) {
       handleSessionClick(sessionId);
     }
   });
 
-  const deleteBtn = item.querySelector(".session-delete-btn");
+  // Menu button toggle
+  const menuBtn = item.querySelector(".session-menu-btn");
+  const menu = item.querySelector(".session-menu") as HTMLElement;
+
+  menuBtn?.addEventListener("click", (e) => {
+    e.stopPropagation();
+
+    // Close all other menus
+    document.querySelectorAll(".session-menu").forEach(m => {
+      if (m !== menu) m.classList.add("hidden");
+    });
+
+    // Toggle this menu
+    menu?.classList.toggle("hidden");
+  });
+
+  // Rename button
+  const renameBtn = item.querySelector(".rename-session-btn");
+  renameBtn?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    menu?.classList.add("hidden");
+    startEditingSessionName(sessionId);
+  });
+
+  // Delete button
+  const deleteBtn = item.querySelector(".delete-session-btn");
   deleteBtn?.addEventListener("click", (e) => {
     e.stopPropagation();
+    menu?.classList.add("hidden");
     deleteSession(sessionId);
   });
 
@@ -1464,3 +1490,13 @@ saveSettingsBtn?.addEventListener("click", async () => {
 
 // Load settings on startup
 loadSettings();
+
+// Close session menus when clicking outside
+document.addEventListener("click", (e) => {
+  const target = e.target as HTMLElement;
+  if (!target.closest(".session-menu") && !target.classList.contains("session-menu-btn")) {
+    document.querySelectorAll(".session-menu").forEach(menu => {
+      menu.classList.add("hidden");
+    });
+  }
+});
