@@ -1450,8 +1450,16 @@ function applySettingsToAllTerminals() {
 }
 
 // Open settings modal
-openSettingsBtn?.addEventListener("click", () => {
+openSettingsBtn?.addEventListener("click", async () => {
   populateSettingsForm();
+
+  // Load and display app version
+  const version = await ipcRenderer.invoke("get-app-version");
+  const versionElement = document.getElementById("app-version");
+  if (versionElement) {
+    versionElement.textContent = `FleetCode v${version}`;
+  }
+
   settingsModal?.classList.remove("hidden");
 });
 

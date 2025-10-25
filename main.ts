@@ -606,6 +606,11 @@ ipcMain.handle("save-terminal-settings", (_event, settings: any) => {
   (store as any).set("terminalSettings", settings);
 });
 
+// Get app version
+ipcMain.handle("get-app-version", () => {
+  return app.getVersion();
+});
+
 // MCP Server management functions
 async function listMcpServers() {
   try {
