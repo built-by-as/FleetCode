@@ -304,7 +304,7 @@ function addSession(persistedSession: PersistedSession, hasActivePty: boolean) {
   sessions.set(persistedSession.id, session);
 
   // Add to sidebar
-  addToSidebar(persistedSession.id, persistedSession.name, hasActivePty);
+  addToSidebar(persistedSession.id, persistedSession.name, hasActivePty, persistedSession.config);
 
   // Only add tab if terminal is active
   if (hasActivePty) {
@@ -351,9 +351,12 @@ function updateSessionState(sessionId: string, isActive: boolean) {
   }
 }
 
-function addToSidebar(sessionId: string, name: string, hasActivePty: boolean) {
+function addToSidebar(sessionId: string, name: string, hasActivePty: boolean, config: SessionConfig) {
   const list = document.getElementById("session-list");
   if (!list) return;
+
+  const isWorktree = config.sessionType === SessionType.WORKTREE;
+  const applyMenuItem = isWorktree ? `<button class="session-menu-item apply-to-project-btn" data-id="${sessionId}">Apply to project</button>` : '';
 
   const item = document.createElement("div");
   item.id = `sidebar-${sessionId}`;
@@ -368,6 +371,7 @@ function addToSidebar(sessionId: string, name: string, hasActivePty: boolean) {
       <button class="session-menu-btn" data-id="${sessionId}" title="Session options">⋯</button>
       <div class="session-menu hidden" data-id="${sessionId}">
         <button class="session-menu-item rename-session-btn" data-id="${sessionId}">Rename</button>
+        ${applyMenuItem}
         <button class="session-menu-item delete-session-btn" data-id="${sessionId}">Delete</button>
       </div>
     </div>
@@ -428,6 +432,14 @@ function addToSidebar(sessionId: string, name: string, hasActivePty: boolean) {
     e.stopPropagation();
     menu?.classList.add("hidden");
     deleteSession(sessionId);
+  });
+
+  // Apply to project button (only for worktree sessions)
+  const applyBtn = item.querySelector(".apply-to-project-btn");
+  applyBtn?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    menu?.classList.add("hidden");
+    showApplyToProjectDialog(sessionId);
   });
 
   list.appendChild(item);
@@ -719,6 +731,27 @@ function deleteSession(sessionId: string) {
       }
     }
   }
+}
+
+function showApplyToProjectDialog(sessionId: string) {
+  const session = sessions.get(sessionId);
+  if (!session) return;
+
+  const modal = document.getElementById("apply-to-project-modal");
+  const branchName = document.getElementById("apply-branch-name");
+  const parentBranch = document.getElementById("apply-parent-branch");
+
+  if (branchName && session.config.branchName) {
+    branchName.textContent = session.config.branchName;
+  }
+  if (parentBranch && session.config.parentBranch) {
+    parentBranch.textContent = session.config.parentBranch;
+  }
+
+  // Store session ID for later use in confirm handler
+  modal?.setAttribute("data-session-id", sessionId);
+
+  modal?.classList.remove("hidden");
 }
 
 // Handle session output
@@ -1503,6 +1536,45 @@ saveSettingsBtn?.addEventListener("click", async () => {
 
 // Load settings on startup
 loadSettings();
+
+// Apply to Project Modal
+const applyToProjectModal = document.getElementById("apply-to-project-modal");
+const cancelApplyToProjectBtn = document.getElementById("cancel-apply-to-project");
+const confirmApplyToProjectBtn = document.getElementById("confirm-apply-to-project");
+
+cancelApplyToProjectBtn?.addEventListener("click", () => {
+  applyToProjectModal?.classList.add("hidden");
+});
+
+confirmApplyToProjectBtn?.addEventListener("click", async () => {
+  const sessionId = applyToProjectModal?.getAttribute("data-session-id");
+  if (!sessionId) return;
+
+  // Disable button during operation
+  if (confirmApplyToProjectBtn) {
+    confirmApplyToProjectBtn.textContent = "Applying...";
+    confirmApplyToProjectBtn.setAttribute("disabled", "true");
+  }
+
+  try {
+    const result = await ipcRenderer.invoke("apply-session-to-project", sessionId);
+
+    if (result.success) {
+      alert(`Changes applied successfully to project directory.`);
+      applyToProjectModal?.classList.add("hidden");
+    } else {
+      alert(`Failed to apply changes: ${result.error}`);
+    }
+  } catch (error) {
+    alert(`Error applying changes: ${error}`);
+  } finally {
+    // Re-enable button
+    if (confirmApplyToProjectBtn) {
+      confirmApplyToProjectBtn.textContent = "Apply Changes";
+      confirmApplyToProjectBtn.removeAttribute("disabled");
+    }
+  }
+});
 
 // Close session menus when clicking outside
 document.addEventListener("click", (e) => {

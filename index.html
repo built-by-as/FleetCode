@@ -259,6 +259,29 @@
       </div>
     </div>
 
+    <!-- Apply to Project Modal -->
+    <div id="apply-to-project-modal" class="modal-overlay hidden">
+      <div class="modal">
+        <h2 class="modal-title">Apply Changes to Project</h2>
+
+        <div class="space-y-3 text-sm text-gray-300">
+          <p>This will apply all changes from this session to the original project directory:</p>
+          <ul class="list-disc list-inside space-y-1 text-gray-400">
+            <li>Branch: <span id="apply-branch-name" class="text-white"></span></li>
+            <li>Parent: <span id="apply-parent-branch" class="text-white"></span></li>
+          </ul>
+          <div class="bg-yellow-900 bg-opacity-30 border border-yellow-700 rounded p-3 mt-3">
+            <p class="text-yellow-300 text-xs">⚠️ This will include all commits and unstaged changes from this branch.</p>
+          </div>
+        </div>
+
+        <div class="btn-group">
+          <button id="cancel-apply-to-project" class="btn-secondary">Cancel</button>
+          <button id="confirm-apply-to-project" class="btn-primary">Apply Changes</button>
+        </div>
+      </div>
+    </div>
+
     <script>
       require('./dist/renderer.js');
     </script>

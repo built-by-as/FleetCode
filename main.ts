@@ -611,6 +611,72 @@ ipcMain.handle("get-app-version", () => {
   return app.getVersion();
 });
 
+// Apply session changes to project
+ipcMain.handle("apply-session-to-project", async (_event, sessionId: string) => {
+  try {
+    const sessions = getPersistedSessions();
+    const session = sessions.find(s => s.id === sessionId);
+
+    if (!session) {
+      return { success: false, error: "Session not found" };
+    }
+
+    if (session.config.sessionType !== SessionType.WORKTREE) {
+      return { success: false, error: "Only worktree sessions can be applied to project" };
+    }
+
+    if (!session.worktreePath || !session.config.parentBranch) {
+      return { success: false, error: "Session missing worktree path or parent branch" };
+    }
+
+    const projectDir = session.config.projectDir;
+    const worktreePath = session.worktreePath;
+    const parentBranch = session.config.parentBranch;
+    const patchFilename = `fleetcode-patch-${Date.now()}.patch`;
+    const patchPath = path.join("/tmp", patchFilename);
+
+    // Generate patch file from parent branch to current state (includes commits + unstaged changes)
+    // Using diff against parent branch to capture all changes
+    const { stdout: patchContent } = await execAsync(
+      `git diff ${parentBranch}`,
+      { cwd: worktreePath }
+    );
+
+    // If patch is empty, there are no changes to apply
+    if (!patchContent.trim()) {
+      return { success: false, error: "No changes to apply" };
+    }
+
+    // Write patch to temp file
+    fs.writeFileSync(patchPath, patchContent);
+
+    // Apply patch to original project directory
+    try {
+      await execAsync(`git apply "${patchPath}"`, { cwd: projectDir });
+
+      // Clean up patch file on success
+      fs.unlinkSync(patchPath);
+
+      return { success: true };
+    } catch (applyError: any) {
+      // Clean up patch file on error
+      if (fs.existsSync(patchPath)) {
+        fs.unlinkSync(patchPath);
+      }
+
+      return {
+        success: false,
+        error: `Failed to apply patch: ${applyError.message || applyError}`
+      };
+    }
+  } catch (error: any) {
+    return {
+      success: false,
+      error: error.message || String(error)
+    };
+  }
+});
+
 // MCP Server management functions
 async function listMcpServers() {
   try {
