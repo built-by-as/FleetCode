@@ -696,8 +696,13 @@ function deleteSession(sessionId: string) {
   const session = sessions.get(sessionId);
   if (!session) return;
 
-  // Confirm deletion
-  if (!confirm(`Delete ${session.name}? This will remove the git worktree.`)) {
+  // Confirm deletion with different message based on session type
+  const isWorktree = session.config.sessionType === SessionType.WORKTREE;
+  const message = isWorktree
+    ? `Delete ${session.name}? This will remove the git worktree.`
+    : `Delete ${session.name}? This will remove the session.`;
+
+  if (!confirm(message)) {
     return;
   }
 
