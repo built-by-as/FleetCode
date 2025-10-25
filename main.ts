@@ -650,9 +650,9 @@ ipcMain.handle("apply-session-to-project", async (_event, sessionId: string) => 
     // Write patch to temp file
     fs.writeFileSync(patchPath, patchContent);
 
-    // Apply patch to original project directory
+    // Apply patch to original project directory using 3-way merge
     try {
-      await execAsync(`git apply "${patchPath}"`, { cwd: projectDir });
+      await execAsync(`git apply --3way "${patchPath}"`, { cwd: projectDir });
 
       // Clean up patch file on success
       fs.unlinkSync(patchPath);
