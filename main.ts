@@ -322,15 +322,15 @@ async function createWorktree(projectDir: string, parentBranch: string, sessionN
   const worktreesBaseDir = getWorktreeBaseDir();
   const projectWorktreeDir = path.join(worktreesBaseDir, projectDirName);
   const worktreeName = customBranchName || `session${sessionNumber}`;
-  const worktreePath = path.join(projectWorktreeDir, worktreeName);
+  let worktreePath = path.join(projectWorktreeDir, worktreeName);
 
   // Use custom branch name if provided, otherwise generate default
   let branchName: string;
+  const shortUuid = sessionUuid.split('-')[0];
   if (customBranchName) {
     branchName = customBranchName;
   } else {
     // Include short UUID to ensure branch uniqueness across deletes/recreates
-    const shortUuid = sessionUuid.split('-')[0];
     branchName = `fleetcode/${worktreeName}-${shortUuid}`;
   }
 
@@ -343,20 +343,9 @@ async function createWorktree(projectDir: string, parentBranch: string, sessionN
     fs.writeFileSync(markerFile, projectDir, "utf-8");
   }
 
-  // Check if worktree already exists and remove it
+  // Append short UUID to worktree path to ensure uniqueness
   if (fs.existsSync(worktreePath)) {
-    try {
-      await git.raw(["worktree", "remove", worktreePath, "--force"]);
-    } catch (error) {
-      console.error("Error removing existing worktree:", error);
-    }
-  }
-
-  // Delete the branch if it exists
-  try {
-    await git.raw(["branch", "-D", branchName]);
-  } catch (error) {
-    // Branch doesn't exist, that's fine
+    worktreePath += `-${shortUuid}`;
   }
 
   // Create new worktree with a new branch from parent branch
