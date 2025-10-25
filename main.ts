@@ -606,6 +606,17 @@ ipcMain.handle("save-terminal-settings", (_event, settings: any) => {
   (store as any).set("terminalSettings", settings);
 });
 
+// Get app version from package.json
+ipcMain.handle("get-app-version", () => {
+  try {
+    const packageJson = JSON.parse(fs.readFileSync(path.join(__dirname, "../package.json"), "utf8"));
+    return packageJson.version;
+  } catch (error) {
+    console.error("Error reading version:", error);
+    return "unknown";
+  }
+});
+
 // MCP Server management functions
 async function listMcpServers() {
   try {
