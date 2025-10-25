@@ -3,6 +3,7 @@ import {ipcRenderer} from "electron";
 import {Terminal} from "xterm";
 import {PersistedSession, SessionConfig, SessionType} from "./types";
 import {isClaudeSessionReady} from "./terminal-utils";
+import * as path from "path";
 
 interface Session {
   id: string;
@@ -915,7 +916,9 @@ document.getElementById("new-session")?.addEventListener("click", async () => {
 
   if (lastSettings.projectDir) {
     selectedDirectory = lastSettings.projectDir;
-    projectDirInput.value = lastSettings.projectDir;
+    // Show last part of path in parentheses before full path
+    const dirName = path.basename(lastSettings.projectDir);
+    projectDirInput.value = `(${dirName}) ${lastSettings.projectDir}`;
 
     // Load git branches for the last directory
     await loadAndPopulateBranches(lastSettings.projectDir, lastSettings.parentBranch);
@@ -971,7 +974,9 @@ browseDirBtn?.addEventListener("click", async () => {
   const dir = await ipcRenderer.invoke("select-directory");
   if (dir) {
     selectedDirectory = dir;
-    projectDirInput.value = dir;
+    // Show last part of path in parentheses before full path
+    const dirName = path.basename(dir);
+    projectDirInput.value = `(${dirName}) ${dir}`;
 
     // Load git branches
     await loadAndPopulateBranches(dir);
