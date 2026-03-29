@@ -7,7 +7,7 @@
     "build:css": "npx tailwindcss -i styles.css -o dist/styles.css",
     "build:ts": "tsc",
     "build": "npm run build:css && npm run build:ts",
-    "start": "npm run build && electron .",
+    "start": "npm run build && npx electron-rebuild -f -w node-pty && electron .",
     "dev": "npm run build && electron .",
     "pack": "npm run build && electron-builder --dir",
     "dist": "npm run build && electron-builder",
